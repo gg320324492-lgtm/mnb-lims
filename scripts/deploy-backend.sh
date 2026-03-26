@@ -60,10 +60,9 @@ npm ci --omit=dev
 
 echo "[deploy] restart pm2 app"
 if pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
-  pm2 restart "$PM2_APP_NAME" --update-env
-else
-  APP_ROOT="$APP_ROOT" PM2_APP_NAME="$PM2_APP_NAME" DEPLOY_ENV="$DEPLOY_ENV" pm2 start ecosystem.config.js --only "$PM2_APP_NAME" --update-env
+  pm2 delete "$PM2_APP_NAME"
 fi
+APP_ROOT="$APP_ROOT" PM2_APP_NAME="$PM2_APP_NAME" DEPLOY_ENV="$DEPLOY_ENV" pm2 start ecosystem.config.js --only "$PM2_APP_NAME" --update-env
 
 pm2 save
 
@@ -72,6 +71,16 @@ HEALTH_PORT="$(grep -E '^PORT=' "$BACKEND_DIR/.env" | cut -d'=' -f2- | tr -d '\r
 if [ -z "$HEALTH_PORT" ]; then
   HEALTH_PORT="3000"
 fi
-curl -fsS "http://127.0.0.1:${HEALTH_PORT}/api/health" >/dev/null
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS "http://127.0.0.1:${HEALTH_PORT}/api/health" >/dev/null; then
+    echo "[deploy] health check passed"
+    break
+  fi
+  if [ "$i" -eq 10 ]; then
+    echo "[deploy] health check failed after retries"
+    exit 1
+  fi
+  sleep 2
+done
 
 echo "[deploy] done"
