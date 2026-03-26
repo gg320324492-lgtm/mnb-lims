@@ -70,9 +70,13 @@ CREATE TABLE IF NOT EXISTS approvals (
   business_id BIGINT NOT NULL,
   applicant_id BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  remark VARCHAR(255) NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL,
   updated_at DATETIME NULL
 );
+
+ALTER TABLE approvals
+  ADD COLUMN IF NOT EXISTS remark VARCHAR(255) NOT NULL DEFAULT '' AFTER status;
 
 INSERT INTO users (id, name, role, phone) VALUES
 (1, '系统管理员', 'super_admin', '13800000000'),
@@ -110,7 +114,7 @@ INSERT INTO consumable_applications (id, consumable_id, warehouse_id, user_id, q
 (1, 1, 1, 3, 2, '课堂实验使用', 'pending')
 ON DUPLICATE KEY UPDATE status = VALUES(status);
 
-INSERT INTO approvals (id, type, business_id, applicant_id, status, created_at, updated_at) VALUES
-(1, 'borrow', 1, 3, 'pending', '2026-03-19 00:10:00', NULL),
-(2, 'consumable_application', 1, 3, 'pending', '2026-03-19 00:20:00', NULL)
-ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = VALUES(updated_at);
+INSERT INTO approvals (id, type, business_id, applicant_id, status, remark, created_at, updated_at) VALUES
+(1, 'borrow', 1, 3, 'pending', '', '2026-03-19 00:10:00', NULL),
+(2, 'consumable_application', 1, 3, 'pending', '', '2026-03-19 00:20:00', NULL)
+ON DUPLICATE KEY UPDATE status = VALUES(status), remark = VALUES(remark), updated_at = VALUES(updated_at);

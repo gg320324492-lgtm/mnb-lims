@@ -248,7 +248,7 @@ function formatDateOnly(value) {
   return `${y}-${m}-${day}`;
 }
 
-async function applyApprovalAction(approvalId, nextStatus) {
+async function applyApprovalAction(approvalId, nextStatus, remark = '') {
   const p = getPoolRequired();
   const conn = await p.getConnection();
 
@@ -374,6 +374,7 @@ async function applyApprovalAction(approvalId, nextStatus) {
           a.business_id AS businessId,
           a.applicant_id AS applicantId,
           a.status,
+          a.remark,
           a.created_at AS createdAt,
           a.updated_at AS updatedAt,
           u.name AS applicantName,
@@ -422,6 +423,7 @@ function toApprovalView(row) {
       applicantId: Number(row.applicantId),
       applicantName: row.applicantName || `用户#${row.applicantId}`,
       status: row.status,
+      remark: row.remark || '',
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       title: `${row.deviceName || '设备'}借用申请`,
@@ -438,6 +440,7 @@ function toApprovalView(row) {
       applicantId: Number(row.applicantId),
       applicantName: row.applicantName || `用户#${row.applicantId}`,
       status: row.status,
+      remark: row.remark || '',
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       title: `${row.consumableName || '耗材'}申领申请`,
@@ -453,6 +456,7 @@ function toApprovalView(row) {
     applicantId: Number(row.applicantId),
     applicantName: row.applicantName || `用户#${row.applicantId}`,
     status: row.status,
+    remark: row.remark || '',
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     title: row.type,

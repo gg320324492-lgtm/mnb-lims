@@ -9,6 +9,7 @@ const state = {
   borrows: [],
   applications: [],
   approvals: [],
+  myApprovals: [],
   aiResponseText: "",
   qrSelectedDeviceId: null,
   qrSelectedConsumableId: null
@@ -251,6 +252,17 @@ function renderMine() {
     ` : ''}
   `, '暂无申领记录');
 
+  const myApprovals = (state.myApprovals || []).slice().sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+  document.getElementById('my-approval-timeline').innerHTML = renderRecordCards(myApprovals, (item) => {
+    const finishedAt = item.updatedAt || item.createdAt || '';
+    return `
+      <div class="list-title">审批 #${escapeHtml(item.id)} · ${escapeHtml(item.title || item.type || '审批')}</div>
+      <div class="list-desc">${escapeHtml(item.description || '')}</div>
+      <div class="meta-row"><span>${badge(item.status)}</span><span class="muted">${escapeHtml(finishedAt)}</span></div>
+      ${item.remark ? `<div class="list-desc">审批备注：${escapeHtml(item.remark)}</div>` : ''}
+    `;
+  }, '暂无审批进度记录');
+
   renderTeacherApprovals();
 }
 
@@ -304,6 +316,7 @@ function renderTeacherApprovals() {
           <span>${badge(item.status)}</span>
           <span>${badge(item.businessStatus)}</span>
         </div>
+        ${item.remark ? `<div class="list-desc">审批备注：${escapeHtml(item.remark)}</div>` : ''}
         ${item.status === 'pending' ? `
           <div class="action-row">
             <button type="button" class="action-btn primary" onclick="window.handleTeacherApprovalAction(${item.id}, 'approved')">通过</button>
@@ -327,15 +340,17 @@ function renderAll() {
 async function refreshData(silent = false) {
   if (!silent) showToast('正在刷新数据...');
   const selectedWarehouseId = Number(state.selectedWarehouseId || 1);
-  const [users, devices, warehouses, consumables, stockAlerts, borrows, applications, approvals] = await Promise.all([
+  const currentUserId = Number(state.currentUserId || 0);
+  const [users, devices, warehouses, consumables, stockAlerts, borrowsResp, applicationsResp, approvalsResp, myApprovalsResp] = await Promise.all([
     api('/api/users'),
     api('/api/devices'),
     api('/api/warehouses'),
     api(`/api/consumables?warehouseId=${selectedWarehouseId}`),
     api(`/api/consumables/stock-alerts?warehouseId=${selectedWarehouseId}`),
-    api('/api/borrows'),
-    api('/api/consumable-applications'),
-    api('/api/approvals?status=pending')
+    api('/api/borrows?page=1&pageSize=200'),
+    api('/api/consumable-applications?page=1&pageSize=200'),
+    api('/api/approvals?status=pending&page=1&pageSize=200'),
+    api(`/api/approvals?applicantId=${currentUserId}&page=1&pageSize=200`)
   ]);
 
   state.users = users;
@@ -346,9 +361,10 @@ async function refreshData(silent = false) {
   }
   state.consumables = consumables;
   state.stockAlerts = stockAlerts;
-  state.borrows = borrows;
-  state.applications = applications;
-  state.approvals = approvals;
+  state.borrows = (borrowsResp && borrowsResp.items) || [];
+  state.applications = (applicationsResp && applicationsResp.items) || [];
+  state.approvals = (approvalsResp && approvalsResp.items) || [];
+  state.myApprovals = (myApprovalsResp && myApprovalsResp.items) || [];
   renderAll();
   if (!silent) showToast('数据已更新');
 }
@@ -449,10 +465,16 @@ async function handleApplicationCancel(id) {
 
 async function handleTeacherApprovalAction(id, status) {
   try {
+    const defaultRemark = status === 'approved' ? '同意' : '驳回';
+    const remark = window.prompt('请输入审批备注（可留空）', defaultRemark);
+    if (remark === null) {
+      return;
+    }
+
     showToast('正在处理审批...', 1800);
     await api(`/api/approvals/${id}/action`, {
       method: 'POST',
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, remark })
     });
     showToast(status === 'approved' ? '审批已通过' : '审批已驳回');
     await refreshData(true);

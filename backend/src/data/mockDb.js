@@ -137,6 +137,7 @@ const approvals = [
     businessId: 1,
     applicantId: 3,
     status: "pending",
+    remark: "",
     createdAt: "2026-03-19T00:10:00.000Z"
   },
   {
@@ -145,6 +146,7 @@ const approvals = [
     businessId: 1,
     applicantId: 3,
     status: "pending",
+    remark: "",
     createdAt: "2026-03-19T00:20:00.000Z"
   }
 ];

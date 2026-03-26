@@ -18,3 +18,18 @@
 1. 跑通后端接口
 2. 做后台审批与基础台账页
 3. 再做小程序借用/申领流程
+
+## 部署与回滚（简版）
+- 自动部署：`main` 推送后触发 `.github/workflows/deploy-backend.yml`
+- 健康检查：`GET /api/health`
+- PM2 进程名：`lab-miniapp-backend-staging`
+- Nginx 站点：`/etc/nginx/conf.d/lab-miniapp-staging.conf`
+
+### 一键回滚到稳定标签
+在服务器执行：
+
+```bash
+bash /srv/lab-miniapp-mvp-staging/scripts/rollback-to-tag.sh deploy-ok-2026-03-26
+```
+
+> 若未传标签参数，默认回滚到 `deploy-ok-2026-03-26`。

@@ -35,6 +35,36 @@ function notFound(res, message) {
   return res.status(404).json({ code: 404, message });
 }
 
+function toPositiveInt(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.floor(num);
+}
+
+function buildPagedResult(list, pageRaw, pageSizeRaw) {
+  const pageSize = Math.min(100, toPositiveInt(pageSizeRaw, 20));
+  const page = toPositiveInt(pageRaw, 1);
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const items = list.slice(start, start + pageSize);
+  return {
+    items,
+    page: safePage,
+    pageSize,
+    total,
+    totalPages
+  };
+}
+
+function normalizeStatusList(value) {
+  const statuses = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return statuses;
+}
 function sanitizeToken(value) {
   return String(value || "").trim();
 }
@@ -180,12 +210,15 @@ function getBusinessRecord(type, businessId) {
   return null;
 }
 
-function syncApproval(type, businessId, status) {
+function syncApproval(type, businessId, status, remark) {
   const approval = db.approvals.find(
     (item) => item.type === type && item.businessId === Number(businessId)
   );
   if (approval) {
     approval.status = status;
+    if (typeof remark === "string") {
+      approval.remark = remark;
+    }
     approval.updatedAt = new Date().toISOString();
   }
 }
@@ -197,6 +230,7 @@ function createApproval(type, businessId, applicantId) {
     businessId,
     applicantId,
     status: "pending",
+    remark: "",
     createdAt: new Date().toISOString()
   };
   db.approvals.push(approval);
@@ -289,7 +323,8 @@ function buildApprovalView(approval) {
       applicantName,
       title: "业务记录不存在",
       description: "请检查数据一致性",
-      businessStatus: "unknown"
+      businessStatus: "unknown",
+      remark: approval.remark || ""
     };
   }
 
@@ -300,7 +335,8 @@ function buildApprovalView(approval) {
       applicantName,
       title: `${device ? device.name : "设备"}借用申请`,
       description: `${record.borrowDate} ~ ${record.expectedReturnDate} ${record.expectedReturnTime || ""} / ${record.purpose || "未填写用途"}`.trim(),
-      businessStatus: record.status
+      businessStatus: record.status,
+      remark: approval.remark || ""
     };
   }
 
@@ -313,7 +349,8 @@ function buildApprovalView(approval) {
       applicantName,
       title: `${consumable ? consumable.name : "耗材"}申领申请`,
       description: `仓库：${getWarehouseName(record.warehouseId || 1)} / 数量：${record.quantity} / ${record.purpose || "未填写用途"}`,
-      businessStatus: record.status
+      businessStatus: record.status,
+      remark: approval.remark || ""
     };
   }
 
@@ -322,7 +359,8 @@ function buildApprovalView(approval) {
     applicantName,
     title: approval.type,
     description: "未知业务类型",
-    businessStatus: record.status || "unknown"
+    businessStatus: record.status || "unknown",
+    remark: approval.remark || ""
   };
 }
 
@@ -1195,10 +1233,13 @@ app.post("/api/stock-movements", (req, res) => {
 });
 
 app.get("/api/borrows", async (req, res) => {
+  const { status, userId, deviceId, page, pageSize } = req.query;
+  const statusList = normalizeStatusList(status);
+
   if (mysqlStore.useMySql) {
     try {
       const rows = await mysqlStore.getBorrows();
-      const data = rows.map((item) => {
+      let data = rows.map((item) => {
         const expectedReturnAt = `${item.expectedReturnDate || ""} ${item.expectedReturnTime || "18:00"}`.trim();
         const isActiveUse = ["approved", "borrowed"].includes(String(item.status || ""));
         return {
@@ -1211,13 +1252,25 @@ app.get("/api/borrows", async (req, res) => {
           isActiveUse
         };
       });
-      return ok(res, data);
+
+      if (statusList.length) {
+        data = data.filter((item) => statusList.includes(String(item.status || "")));
+      }
+      if (userId) {
+        data = data.filter((item) => Number(item.userId) === Number(userId));
+      }
+      if (deviceId) {
+        data = data.filter((item) => Number(item.deviceId) === Number(deviceId));
+      }
+
+      const paged = buildPagedResult(data, page, pageSize);
+      return ok(res, paged);
     } catch (err) {
       return badRequest(res, `数据库查询失败：${err.message}`);
     }
   }
 
-  const data = db.borrows.map((item) => {
+  let data = db.borrows.map((item) => {
     const device = db.devices.find((deviceItem) => deviceItem.id === Number(item.deviceId));
     const borrowerName = getUserName(item.userId);
     const expectedReturnAt = `${item.expectedReturnDate || ""} ${item.expectedReturnTime || "18:00"}`.trim();
@@ -1233,7 +1286,19 @@ app.get("/api/borrows", async (req, res) => {
       isActiveUse
     };
   });
-  ok(res, data);
+
+  if (statusList.length) {
+    data = data.filter((item) => statusList.includes(String(item.status || "")));
+  }
+  if (userId) {
+    data = data.filter((item) => Number(item.userId) === Number(userId));
+  }
+  if (deviceId) {
+    data = data.filter((item) => Number(item.deviceId) === Number(deviceId));
+  }
+
+  const paged = buildPagedResult(data, page, pageSize);
+  ok(res, paged);
 });
 
 app.post("/api/borrows", async (req, res) => {
@@ -1304,16 +1369,34 @@ app.patch("/api/borrows/:id/status", async (req, res) => {
 });
 
 app.get("/api/consumable-applications", async (req, res) => {
+  const { status, userId, consumableId, warehouseId, page, pageSize } = req.query;
+  const statusList = normalizeStatusList(status);
+
   if (mysqlStore.useMySql) {
     try {
-      const rows = await mysqlStore.getConsumableApplications();
-      return ok(res, rows);
+      let rows = await mysqlStore.getConsumableApplications();
+
+      if (statusList.length) {
+        rows = rows.filter((item) => statusList.includes(String(item.status || "")));
+      }
+      if (userId) {
+        rows = rows.filter((item) => Number(item.userId) === Number(userId));
+      }
+      if (consumableId) {
+        rows = rows.filter((item) => Number(item.consumableId) === Number(consumableId));
+      }
+      if (warehouseId) {
+        rows = rows.filter((item) => Number(item.warehouseId) === Number(warehouseId));
+      }
+
+      const paged = buildPagedResult(rows, page, pageSize);
+      return ok(res, paged);
     } catch (err) {
       return badRequest(res, `数据库查询失败：${err.message}`);
     }
   }
 
-  const data = db.consumableApplications.map((item) => {
+  let data = db.consumableApplications.map((item) => {
     const consumable = db.consumables.find(
       (consumableItem) => consumableItem.id === Number(item.consumableId)
     );
@@ -1325,7 +1408,22 @@ app.get("/api/consumable-applications", async (req, res) => {
       consumableName: consumable ? consumable.name : "未知耗材"
     };
   });
-  ok(res, data);
+
+  if (statusList.length) {
+    data = data.filter((item) => statusList.includes(String(item.status || "")));
+  }
+  if (userId) {
+    data = data.filter((item) => Number(item.userId) === Number(userId));
+  }
+  if (consumableId) {
+    data = data.filter((item) => Number(item.consumableId) === Number(consumableId));
+  }
+  if (warehouseId) {
+    data = data.filter((item) => Number(item.warehouseId) === Number(warehouseId));
+  }
+
+  const paged = buildPagedResult(data, page, pageSize);
+  ok(res, paged);
 });
 
 app.post("/api/consumable-applications", async (req, res) => {
@@ -1414,12 +1512,23 @@ app.patch("/api/consumable-applications/:id/status", async (req, res) => {
 });
 
 app.get("/api/approvals", async (req, res) => {
-  const { status, type } = req.query;
+  const { status, type, applicantId, page, pageSize } = req.query;
+  const statusList = normalizeStatusList(status);
 
   if (mysqlStore.useMySql) {
     try {
-      const rows = await mysqlStore.getApprovals({ status, type });
-      return ok(res, rows.map(mysqlStore.toApprovalView));
+      const rows = await mysqlStore.getApprovals({ status: statusList[0] || "", type });
+      let list = rows.map(mysqlStore.toApprovalView);
+
+      if (statusList.length) {
+        list = list.filter((item) => statusList.includes(String(item.status || "")));
+      }
+      if (applicantId) {
+        list = list.filter((item) => Number(item.applicantId) === Number(applicantId));
+      }
+
+      const paged = buildPagedResult(list, page, pageSize);
+      return ok(res, paged);
     } catch (err) {
       return badRequest(res, `数据库查询失败：${err.message}`);
     }
@@ -1427,30 +1536,41 @@ app.get("/api/approvals", async (req, res) => {
 
   let list = [...db.approvals];
 
-  if (status) {
-    list = list.filter((item) => item.status === status);
+  if (statusList.length) {
+    list = list.filter((item) => statusList.includes(String(item.status || "")));
   }
 
   if (type) {
     list = list.filter((item) => item.type === type);
   }
 
-  ok(res, list.map(buildApprovalView));
+  if (applicantId) {
+    list = list.filter((item) => Number(item.applicantId) === Number(applicantId));
+  }
+
+  const viewList = list.map(buildApprovalView);
+  const paged = buildPagedResult(viewList, page, pageSize);
+  ok(res, paged);
 });
 
 app.post("/api/approvals/:id/action", async (req, res) => {
   const nextStatus = req.body.status;
+  const remark = String((req.body && req.body.remark) || "").trim();
   if (!["approved", "rejected"].includes(nextStatus)) {
     return badRequest(res, "审批状态仅支持 approved 或 rejected");
   }
 
   if (mysqlStore.useMySql) {
     try {
-      const row = await mysqlStore.applyApprovalAction(req.params.id, nextStatus);
+      const row = await mysqlStore.applyApprovalAction(req.params.id, nextStatus, remark);
       if (!row) {
         return notFound(res, "审批记录不存在");
       }
-      return ok(res, mysqlStore.toApprovalView(row), "审批已处理");
+      const view = mysqlStore.toApprovalView(row);
+      if (view) {
+        view.remark = remark;
+      }
+      return ok(res, view, "审批已处理");
     } catch (err) {
       if (String(err.message || "").includes("审批记录不存在")) {
         return notFound(res, "审批记录不存在");
@@ -1470,7 +1590,10 @@ app.post("/api/approvals/:id/action", async (req, res) => {
   }
 
   approval.status = nextStatus;
+  approval.remark = remark;
   approval.updatedAt = new Date().toISOString();
+
+  syncApproval(approval.type, approval.businessId, nextStatus, remark);
   return ok(res, buildApprovalView(approval), "审批已处理");
 });
 

@@ -1,6 +1,12 @@
 const state = {
   stats: null,
   approvals: [],
+  approvalsPagination: {
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1
+  },
   devices: [],
   consumables: [],
   warehouses: [],
@@ -8,7 +14,27 @@ const state = {
   stockAlerts: null,
   stockMovements: [],
   borrows: [],
+  borrowFilters: {
+    status: "",
+    userId: ""
+  },
+  borrowPagination: {
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1
+  },
   applications: [],
+  applicationFilters: {
+    status: "",
+    userId: ""
+  },
+  applicationPagination: {
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1
+  },
   qrScanLogs: [],
   qrLogPagination: {
     page: 1,
@@ -174,6 +200,22 @@ function renderTable(containerId, columns, rows, emptyText = "暂无数据") {
   `;
 }
 
+function renderPaginationBar(prefix, pagination) {
+  const infoEl = document.getElementById(`${prefix}-page-info`);
+  const prevBtn = document.getElementById(`${prefix}-prev-btn`);
+  const nextBtn = document.getElementById(`${prefix}-next-btn`);
+
+  if (infoEl) {
+    infoEl.textContent = `第 ${pagination.page} / ${pagination.totalPages} 页，共 ${pagination.total} 条`;
+  }
+  if (prevBtn) {
+    prevBtn.disabled = pagination.page <= 1;
+  }
+  if (nextBtn) {
+    nextBtn.disabled = pagination.page >= pagination.totalPages;
+  }
+}
+
 function renderApprovals() {
   renderTable(
     "approvals-table",
@@ -187,6 +229,10 @@ function renderApprovals() {
       },
       { title: "审批状态", render: (row) => badge(row.status) },
       { title: "业务状态", render: (row) => badge(row.businessStatus) },
+      {
+        title: "审批备注",
+        render: (row) => (row.remark ? escapeHtml(row.remark) : '<span class="muted">-</span>')
+      },
       {
         title: "操作",
         render: (row) => {
@@ -205,9 +251,29 @@ function renderApprovals() {
     state.approvals,
     "暂无待审批或审批记录"
   );
+
+  renderPaginationBar("approvals", state.approvalsPagination);
 }
 
 function renderLedgers() {
+  const borrowStatusFilterEl = document.getElementById("borrow-status-filter");
+  const borrowUserFilterEl = document.getElementById("borrow-user-filter");
+  const appStatusFilterEl = document.getElementById("application-status-filter");
+  const appUserFilterEl = document.getElementById("application-user-filter");
+
+  if (borrowStatusFilterEl) {
+    borrowStatusFilterEl.value = state.borrowFilters.status || "";
+  }
+  if (borrowUserFilterEl) {
+    borrowUserFilterEl.value = state.borrowFilters.userId || "";
+  }
+  if (appStatusFilterEl) {
+    appStatusFilterEl.value = state.applicationFilters.status || "";
+  }
+  if (appUserFilterEl) {
+    appUserFilterEl.value = state.applicationFilters.userId || "";
+  }
+
   renderTable(
     "devices-table",
     [
@@ -322,6 +388,9 @@ function renderLedgers() {
     state.applications,
     "暂无申领记录"
   );
+
+  renderPaginationBar("borrows", state.borrowPagination);
+  renderPaginationBar("applications", state.applicationPagination);
 }
 
 function toCsvCell(value) {
@@ -532,45 +601,84 @@ async function loadAll() {
     qrQuery.set("pageSize", String(state.qrLogPagination.pageSize || 20));
     const qrLogsUrl = `/api/qr-scan-logs${qrQuery.toString() ? `?${qrQuery.toString()}` : ""}`;
 
+    const approvalQuery = new URLSearchParams({
+      page: String(state.approvalsPagination.page || 1),
+      pageSize: String(state.approvalsPagination.pageSize || 10)
+    });
+
+    const borrowQuery = new URLSearchParams({
+      page: String(state.borrowPagination.page || 1),
+      pageSize: String(state.borrowPagination.pageSize || 10)
+    });
+    if (state.borrowFilters.status) {
+      borrowQuery.set("status", state.borrowFilters.status);
+    }
+    if (state.borrowFilters.userId) {
+      borrowQuery.set("userId", state.borrowFilters.userId);
+    }
+
+    const appQuery = new URLSearchParams({
+      page: String(state.applicationPagination.page || 1),
+      pageSize: String(state.applicationPagination.pageSize || 10)
+    });
+    if (state.applicationFilters.status) {
+      appQuery.set("status", state.applicationFilters.status);
+    }
+    if (state.applicationFilters.userId) {
+      appQuery.set("userId", state.applicationFilters.userId);
+    }
+
     const [
       stats,
-      approvals,
+      approvalsResp,
       devices,
       consumables,
       warehouses,
-      borrows,
-      applications,
+      borrowsResp,
+      applicationsResp,
       stockAlerts,
       stockMovements,
       qrLogsResp
     ] = await Promise.all([
       apiRequest("/api/dashboard/stats"),
-      apiRequest("/api/approvals"),
+      apiRequest(`/api/approvals?${approvalQuery.toString()}`),
       apiRequest("/api/devices"),
       apiRequest("/api/consumables"),
       apiRequest("/api/warehouses"),
-      apiRequest("/api/borrows"),
-      apiRequest("/api/consumable-applications"),
+      apiRequest(`/api/borrows?${borrowQuery.toString()}`),
+      apiRequest(`/api/consumable-applications?${appQuery.toString()}`),
       apiRequest(`/api/consumables/stock-alerts?warehouseId=${selectedWarehouseId}`),
       apiRequest(`/api/stock-movements?warehouseId=${selectedWarehouseId}`),
       apiRequest(qrLogsUrl)
     ]);
 
     state.stats = stats;
-    state.approvals = approvals;
+    state.approvals = (approvalsResp && approvalsResp.items) || [];
+    state.approvalsPagination.total = Number((approvalsResp && approvalsResp.total) || 0);
+    state.approvalsPagination.page = Number((approvalsResp && approvalsResp.page) || state.approvalsPagination.page || 1);
+    state.approvalsPagination.pageSize = Number((approvalsResp && approvalsResp.pageSize) || state.approvalsPagination.pageSize || 10);
+    state.approvalsPagination.totalPages = Number((approvalsResp && approvalsResp.totalPages) || 1);
     state.devices = devices;
     state.consumables = consumables;
     state.warehouses = warehouses;
     state.selectedWarehouseId = selectedWarehouseId;
     state.stockAlerts = stockAlerts;
     state.stockMovements = stockMovements;
+    state.borrows = (borrowsResp && borrowsResp.items) || [];
+    state.borrowPagination.total = Number((borrowsResp && borrowsResp.total) || 0);
+    state.borrowPagination.page = Number((borrowsResp && borrowsResp.page) || state.borrowPagination.page || 1);
+    state.borrowPagination.pageSize = Number((borrowsResp && borrowsResp.pageSize) || state.borrowPagination.pageSize || 10);
+    state.borrowPagination.totalPages = Number((borrowsResp && borrowsResp.totalPages) || 1);
+    state.applications = (applicationsResp && applicationsResp.items) || [];
+    state.applicationPagination.total = Number((applicationsResp && applicationsResp.total) || 0);
+    state.applicationPagination.page = Number((applicationsResp && applicationsResp.page) || state.applicationPagination.page || 1);
+    state.applicationPagination.pageSize = Number((applicationsResp && applicationsResp.pageSize) || state.applicationPagination.pageSize || 10);
+    state.applicationPagination.totalPages = Number((applicationsResp && applicationsResp.totalPages) || 1);
     state.qrScanLogs = (qrLogsResp && qrLogsResp.items) || [];
     state.qrLogPagination.total = Number((qrLogsResp && qrLogsResp.total) || 0);
     state.qrLogPagination.page = Number((qrLogsResp && qrLogsResp.page) || state.qrLogPagination.page || 1);
     state.qrLogPagination.pageSize = Number((qrLogsResp && qrLogsResp.pageSize) || state.qrLogPagination.pageSize || 20);
     state.qrLogPagination.totalPages = Number((qrLogsResp && qrLogsResp.totalPages) || 1);
-    state.borrows = borrows;
-    state.applications = applications;
 
     renderStats();
     renderApprovals();
@@ -756,10 +864,16 @@ function handleConsumableQrExport(id, format) {
 
 async function handleApprovalAction(id, status) {
   try {
+    const defaultRemark = status === "approved" ? "同意" : "驳回";
+    const remark = window.prompt("请输入审批备注（可留空）", defaultRemark);
+    if (remark === null) {
+      return;
+    }
+
     setMessage(`正在处理审批 #${id} ...`);
     await apiRequest(`/api/approvals/${id}/action`, {
       method: "POST",
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, remark })
     });
     await loadAll();
     setMessage(`审批 #${id} 已${status === "approved" ? "通过" : "驳回"}`);
@@ -867,6 +981,74 @@ async function handleQrLogExport() {
   setTimeout(() => setMessage(""), 1800);
 }
 
+async function handleBorrowFilter() {
+  const statusEl = document.getElementById("borrow-status-filter");
+  const userIdEl = document.getElementById("borrow-user-filter");
+  state.borrowFilters.status = statusEl ? String(statusEl.value || "") : "";
+  state.borrowFilters.userId = userIdEl ? String(userIdEl.value || "") : "";
+  state.borrowPagination.page = 1;
+  await loadAll();
+}
+
+async function handleBorrowReset() {
+  state.borrowFilters.status = "";
+  state.borrowFilters.userId = "";
+  state.borrowPagination.page = 1;
+  await loadAll();
+}
+
+async function handleBorrowPrevPage() {
+  if (state.borrowPagination.page <= 1) return;
+  state.borrowPagination.page -= 1;
+  await loadAll();
+}
+
+async function handleBorrowNextPage() {
+  if (state.borrowPagination.page >= state.borrowPagination.totalPages) return;
+  state.borrowPagination.page += 1;
+  await loadAll();
+}
+
+async function handleApplicationFilter() {
+  const statusEl = document.getElementById("application-status-filter");
+  const userIdEl = document.getElementById("application-user-filter");
+  state.applicationFilters.status = statusEl ? String(statusEl.value || "") : "";
+  state.applicationFilters.userId = userIdEl ? String(userIdEl.value || "") : "";
+  state.applicationPagination.page = 1;
+  await loadAll();
+}
+
+async function handleApplicationReset() {
+  state.applicationFilters.status = "";
+  state.applicationFilters.userId = "";
+  state.applicationPagination.page = 1;
+  await loadAll();
+}
+
+async function handleApplicationPrevPage() {
+  if (state.applicationPagination.page <= 1) return;
+  state.applicationPagination.page -= 1;
+  await loadAll();
+}
+
+async function handleApplicationNextPage() {
+  if (state.applicationPagination.page >= state.applicationPagination.totalPages) return;
+  state.applicationPagination.page += 1;
+  await loadAll();
+}
+
+async function handleApprovalsPrevPage() {
+  if (state.approvalsPagination.page <= 1) return;
+  state.approvalsPagination.page -= 1;
+  await loadAll();
+}
+
+async function handleApprovalsNextPage() {
+  if (state.approvalsPagination.page >= state.approvalsPagination.totalPages) return;
+  state.approvalsPagination.page += 1;
+  await loadAll();
+}
+
 window.handleApprovalAction = handleApprovalAction;
 window.handleDeviceQrAction = handleDeviceQrAction;
 window.handleConsumableQrAction = handleConsumableQrAction;
@@ -952,6 +1134,76 @@ function bindEvents() {
   if (qrNextBtn) {
     qrNextBtn.addEventListener("click", () => {
       handleQrLogNextPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const borrowFilterBtn = document.getElementById("borrow-filter-btn");
+  if (borrowFilterBtn) {
+    borrowFilterBtn.addEventListener("click", () => {
+      handleBorrowFilter().catch((error) => setMessage(error.message || "筛选失败", true));
+    });
+  }
+
+  const borrowResetBtn = document.getElementById("borrow-reset-btn");
+  if (borrowResetBtn) {
+    borrowResetBtn.addEventListener("click", () => {
+      handleBorrowReset().catch((error) => setMessage(error.message || "重置失败", true));
+    });
+  }
+
+  const borrowPrevBtn = document.getElementById("borrows-prev-btn");
+  if (borrowPrevBtn) {
+    borrowPrevBtn.addEventListener("click", () => {
+      handleBorrowPrevPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const borrowPageNextBtn = document.getElementById("borrows-next-btn");
+  if (borrowPageNextBtn) {
+    borrowPageNextBtn.addEventListener("click", () => {
+      handleBorrowNextPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const appFilterBtn = document.getElementById("application-filter-btn");
+  if (appFilterBtn) {
+    appFilterBtn.addEventListener("click", () => {
+      handleApplicationFilter().catch((error) => setMessage(error.message || "筛选失败", true));
+    });
+  }
+
+  const appResetBtn = document.getElementById("application-reset-btn");
+  if (appResetBtn) {
+    appResetBtn.addEventListener("click", () => {
+      handleApplicationReset().catch((error) => setMessage(error.message || "重置失败", true));
+    });
+  }
+
+  const appPrevBtn = document.getElementById("applications-prev-btn");
+  if (appPrevBtn) {
+    appPrevBtn.addEventListener("click", () => {
+      handleApplicationPrevPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const appNextBtn = document.getElementById("applications-next-btn");
+  if (appNextBtn) {
+    appNextBtn.addEventListener("click", () => {
+      handleApplicationNextPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const approvalsPrevBtn = document.getElementById("approvals-prev-btn");
+  if (approvalsPrevBtn) {
+    approvalsPrevBtn.addEventListener("click", () => {
+      handleApprovalsPrevPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const approvalsNextBtn = document.getElementById("approvals-next-btn");
+  if (approvalsNextBtn) {
+    approvalsNextBtn.addEventListener("click", () => {
+      handleApprovalsNextPage().catch((error) => setMessage(error.message || "翻页失败", true));
     });
   }
 }
