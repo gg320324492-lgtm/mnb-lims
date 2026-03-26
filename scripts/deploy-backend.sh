@@ -62,7 +62,12 @@ echo "[deploy] restart pm2 app"
 if pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
   pm2 delete "$PM2_APP_NAME"
 fi
-APP_ROOT="$APP_ROOT" PM2_APP_NAME="$PM2_APP_NAME" DEPLOY_ENV="$DEPLOY_ENV" pm2 start ecosystem.config.js --only "$PM2_APP_NAME" --update-env
+
+set -a
+. "$BACKEND_DIR/.env"
+set +a
+
+pm2 start "$BACKEND_DIR/src/app.js" --name "$PM2_APP_NAME" --cwd "$BACKEND_DIR" --update-env
 
 pm2 save
 
