@@ -28,7 +28,7 @@ jobs:
           script: |
             set -e
             if [ "${{ github.ref_name }}" = "main" ]; then
-              export DEPLOY_ENV="production"
+              export DEPLOY_ENV="staging"
               export APP_ROOT="${{ secrets.APP_ROOT_PRODUCTION || '/srv/lab-miniapp-mvp' }}"
               export PM2_APP_NAME="${{ secrets.PM2_APP_NAME_PRODUCTION || 'lab-miniapp-backend-production' }}"
             else
