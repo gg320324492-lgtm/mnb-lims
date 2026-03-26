@@ -1,0 +1,28 @@
+<view class="container">
+  <view class="card">
+    <view class="title">系统概览</view>
+    <picker range="{{users}}" range-key="name" value="{{currentUserIndex}}" bindchange="onUserChange">
+      <view class="row" style="margin-bottom: 12rpx;">
+        <text class="label">当前用户</text>
+        <text>{{currentUserName}}</text>
+      </view>
+    </picker>
+    <button class="btn-primary" bindtap="onScanQr" style="margin-top: 0; margin-bottom: 14rpx;">扫一扫（设备/耗材）</button>
+    <view class="row"><text class="label">设备总数</text><text>{{stats.devicesCount}}</text></view>
+    <view class="row"><text class="label">耗材总数</text><text>{{stats.consumablesCount}}</text></view>
+    <view class="row"><text class="label">待审批</text><text>{{stats.pendingApprovals}}</text></view>
+    <view class="row"><text class="label">低库存项</text><text>{{stats.lowStockCount}}</text></view>
+  </view>
+
+  <view class="card">
+    <view class="title">我的待办</view>
+    <block wx:if="{{myTodos.length}}">
+      <view wx:for="{{myTodos}}" wx:key="id" style="margin-bottom: 16rpx;">
+        <view>{{item.title}}</view>
+        <view class="muted">{{item.desc}}</view>
+        <text class="badge {{item.statusClass}}">{{item.statusText}}</text>
+      </view>
+    </block>
+    <view wx:else class="muted">暂无待办</view>
+  </view>
+</view>

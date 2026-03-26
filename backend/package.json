@@ -1,0 +1,18 @@
+{
+  "name": "lab-miniapp-backend",
+  "version": "0.1.0",
+  "description": "MVP backend for laboratory management mini program",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "node src/app.js",
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "morgan": "^1.10.0",
+    "mysql2": "^3.20.0",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.4"
+  }
+}

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>实验室管理小程序</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="phone-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">实验室管理小程序</div>
+          <h1 id="page-title">首页</h1>
+        </div>
+        <select id="user-select" class="user-select"></select>
+      </header>
+
+      <main class="content">
+        <section class="page active" data-page="home">
+          <div class="hero-card">
+            <div>
+              <div class="hero-title">实验室物资一站式管理</div>
+              <div class="hero-desc">支持设备借用、耗材申领与我的记录查看</div>
+            </div>
+          </div>
+
+          <div id="home-stats" class="stat-grid"></div>
+
+          <div class="quick-grid">
+            <button class="quick-card" data-target="borrow">
+              <span class="quick-title">借用设备</span>
+              <span class="quick-desc">提交借用用途和归还时间</span>
+            </button>
+            <button class="quick-card" data-target="apply">
+              <span class="quick-title">申领耗材</span>
+              <span class="quick-desc">按需提交数量和用途</span>
+            </button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">我的待办</div>
+            <div id="todo-list" class="list-stack"></div>
+          </div>
+        </section>
+
+        <section class="page" data-page="borrow">
+          <div class="panel">
+            <div class="panel-title">设备借用</div>
+            <form id="borrow-form" class="form-stack">
+              <label>
+                <span>设备</span>
+                <select name="deviceId" id="borrow-device"></select>
+              </label>
+              <label>
+                <span>借用日期</span>
+                <input type="date" name="borrowDate" required />
+              </label>
+              <label>
+                <span>预计归还日期</span>
+                <input type="date" name="expectedReturnDate" required />
+              </label>
+              <label>
+                <span>预计归还时间</span>
+                <input type="time" name="expectedReturnTime" value="18:00" required />
+              </label>
+              <label>
+                <span>借用用途</span>
+                <textarea name="purpose" rows="3" placeholder="例如：课程实验、课题测试"></textarea>
+              </label>
+              <button type="submit" class="primary-btn">提交借用申请</button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">设备使用情况</div>
+            <div id="device-cards" class="list-stack"></div>
+          </div>
+        </section>
+
+        <section class="page" data-page="apply">
+          <div class="panel">
+            <div class="panel-title">耗材申领</div>
+            <form id="apply-form" class="form-stack">
+              <label>
+                <span>仓库</span>
+                <select name="warehouseId" id="apply-warehouse"></select>
+              </label>
+              <label>
+                <span>耗材</span>
+                <select name="consumableId" id="apply-consumable"></select>
+              </label>
+              <label>
+                <span>申领数量</span>
+                <input type="number" name="quantity" min="1" value="1" required />
+              </label>
+              <label>
+                <span>用途说明</span>
+                <textarea name="purpose" rows="3" placeholder="例如：实验课堂、日常消耗"></textarea>
+              </label>
+              <button type="submit" class="primary-btn">提交申领申请</button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">耗材库存</div>
+            <div id="consumable-cards" class="list-stack"></div>
+          </div>
+        </section>
+
+        <section class="page" data-page="assistant">
+          <div class="panel">
+            <div class="panel-title">AI 数字员工（MVP）</div>
+            <div class="list-stack">
+              <div class="list-card" style="padding: 14px;">
+                <div class="list-title">库存概览</div>
+                <div id="ai-stock-summary" class="list-desc">等待数据加载...</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">让它分析</div>
+            <div class="form-stack">
+              <label>
+                <span>你的问题</span>
+                <textarea
+                  id="ai-question"
+                  rows="3"
+                  placeholder="例如：帮我借用示波器，2026-03-27归还。或：帮我在实验室申领一次性手套 2 盒。"
+                ></textarea>
+              </label>
+              <button id="ai-ask-btn" type="button" class="primary-btn">开始分析</button>
+            </div>
+
+            <div style="height: 12px;"></div>
+            <div id="ai-response" class="list-card">
+              <div class="list-title">回复</div>
+              <div id="ai-response-text" class="list-desc">输入问题后点击“开始分析”。</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" data-page="mine">
+          <div class="panel">
+            <div class="panel-title">我的信息</div>
+            <div id="profile-card" class="profile-card"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">我的借用</div>
+            <div id="my-borrows" class="list-stack"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">我的申领</div>
+            <div id="my-applications" class="list-stack"></div>
+          </div>
+
+          <div class="panel" id="teacher-approvals-panel" style="display: none;">
+            <div class="panel-title">待处理审批</div>
+            <div id="teacher-approvals-tip" class="list-desc" style="margin-bottom: 10px;">
+              仅实验室管理员/老师可处理。
+            </div>
+            <div id="teacher-approvals-list" class="list-stack"></div>
+          </div>
+        </section>
+      </main>
+
+      <section id="global-toast" class="toast hidden"></section>
+
+      <nav class="tabbar">
+        <button class="tab-item active" data-page="home">首页</button>
+        <button class="tab-item" data-page="borrow">设备借用</button>
+        <button class="tab-item" data-page="assistant">AI</button>
+        <button class="tab-item" data-page="apply">耗材申领</button>
+        <button class="tab-item" data-page="mine">我的</button>
+      </nav>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

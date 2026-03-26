@@ -1,0 +1,15 @@
+{
+  "miniprogramRoot": "./",
+  "projectname": "lab-miniapp-mvp",
+  "description": "实验室管理小程序 MVP",
+  "appid": "touristappid",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false,
+    "checkSiteMap": true
+  },
+  "compileType": "miniprogram"
+}

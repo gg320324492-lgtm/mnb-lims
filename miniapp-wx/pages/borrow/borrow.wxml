@@ -1,0 +1,41 @@
+<view class="container">
+  <view class="card">
+    <view class="title">发起借用</view>
+
+    <view class="label">选择设备</view>
+    <picker range="{{devices}}" range-key="name" value="{{selectedDeviceIndex}}" bindchange="onDeviceChange">
+      <view class="row picker-box">
+        <text>{{devices.length ? devices[selectedDeviceIndex].name : '暂无设备'}}</text>
+        <text class="muted">点击切换</text>
+      </view>
+    </picker>
+    <button class="btn-primary" bindtap="onScanQr" style="margin-top: 0; margin-bottom: 12rpx;">扫一扫设备二维码</button>
+    <view wx:if="{{matchedDeviceName}}" class="muted">已通过扫码匹配：{{matchedDeviceName}}</view>
+
+    <view class="label">借用日期</view>
+    <picker mode="date" value="{{borrowDate}}" bindchange="onBorrowDateChange">
+      <view class="picker-box">{{borrowDate}}</view>
+    </picker>
+
+    <view class="label">预计归还日期</view>
+    <picker mode="date" value="{{expectedReturnDate}}" bindchange="onReturnDateChange">
+      <view class="picker-box">{{expectedReturnDate}}</view>
+    </picker>
+
+    <view class="label">用途说明</view>
+    <textarea placeholder="例如：电子课程实验" value="{{purpose}}" bindinput="onPurposeInput" class="textarea"></textarea>
+
+    <button class="btn-primary" bindtap="submitBorrow">提交借用申请</button>
+  </view>
+
+  <view class="card">
+    <view class="title">设备台账</view>
+    <view wx:for="{{devices}}" wx:key="id" class="device-item">
+      <view class="row">
+        <text>{{item.name}}</text>
+        <text class="badge {{item.status}}">{{item.statusText}}</text>
+      </view>
+      <view class="muted">编号 {{item.code}} / 分类 {{item.category}}</view>
+    </view>
+  </view>
+</view>

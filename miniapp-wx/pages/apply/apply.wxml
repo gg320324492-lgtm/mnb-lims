@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="card">
+    <view class="title">发起申领</view>
+
+    <view class="label">仓库</view>
+    <picker range="{{warehouses}}" range-key="name" value="{{selectedWarehouseIndex}}" bindchange="onWarehouseChange">
+      <view class="picker-box">{{warehouses.length ? warehouses[selectedWarehouseIndex].name : '暂无仓库'}}</view>
+    </picker>
+
+    <view class="label">耗材</view>
+    <picker range="{{consumables}}" range-key="name" value="{{selectedConsumableIndex}}" bindchange="onConsumableChange">
+      <view class="picker-box">{{consumables.length ? consumables[selectedConsumableIndex].name : '暂无耗材'}}</view>
+    </picker>
+    <button class="btn-primary" bindtap="onScanQr" style="margin-top: 0; margin-bottom: 12rpx;">扫一扫耗材二维码</button>
+    <view wx:if="{{matchedConsumableName}}" class="muted">已通过扫码匹配：{{matchedConsumableName}}</view>
+
+    <view class="label">数量</view>
+    <input type="number" class="input" value="{{quantity}}" bindinput="onQuantityInput" />
+
+    <view class="label">用途说明</view>
+    <textarea class="textarea" placeholder="例如：课堂实验使用" value="{{purpose}}" bindinput="onPurposeInput"></textarea>
+
+    <button class="btn-primary" bindtap="submitApply">提交申领申请</button>
+  </view>
+
+  <view class="card">
+    <view class="title">库存预览</view>
+    <view wx:for="{{consumables}}" wx:key="id" class="cons-item">
+      <view class="row">
+        <text>{{item.name}}</text>
+        <text class="badge {{item.stock <= item.safeStock ? 'pending' : 'approved'}}">{{item.stock <= item.safeStock ? '低库存' : '库存正常'}}</text>
+      </view>
+      <view class="muted">库存 {{item.stock}}{{item.unit}} / 安全库存 {{item.safeStock}}{{item.unit}}</view>
+    </view>
+  </view>
+</view>

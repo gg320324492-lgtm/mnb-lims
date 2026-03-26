@@ -1,0 +1,38 @@
+<view class="container">
+  <view class="card">
+    <view class="title">账号与环境</view>
+    <view class="row"><text class="label">当前用户</text><text>{{currentUserName}}</text></view>
+    <view class="label" style="margin-top: 12rpx;">后端 API 地址</view>
+    <input class="input" value="{{apiBase}}" bindinput="onApiInput" placeholder="https://你的域名" />
+    <button class="btn-primary" bindtap="saveApiBase">保存地址</button>
+    <view class="muted">发布前请改为腾讯云 HTTPS 域名，并在小程序后台配置合法域名。</view>
+  </view>
+
+  <view class="card">
+    <view class="title">我的借用记录</view>
+    <block wx:if="{{borrows.length}}">
+      <view wx:for="{{borrows}}" wx:key="id" class="record-item">
+        <view class="row">
+          <text>{{item.deviceName || '设备'}}</text>
+          <text class="badge {{item.status}}">{{item.statusText}}</text>
+        </view>
+        <view class="muted">{{item.borrowDate}} ~ {{item.expectedReturnDate}}</view>
+      </view>
+    </block>
+    <view wx:else class="muted">暂无借用记录</view>
+  </view>
+
+  <view class="card">
+    <view class="title">我的申领记录</view>
+    <block wx:if="{{applications.length}}">
+      <view wx:for="{{applications}}" wx:key="id" class="record-item">
+        <view class="row">
+          <text>{{item.consumableName || '耗材'}} x{{item.quantity}}</text>
+          <text class="badge {{item.status}}">{{item.statusText}}</text>
+        </view>
+        <view class="muted">仓库 {{item.warehouseName}} / {{item.purpose || '未填写用途'}}</view>
+      </view>
+    </block>
+    <view wx:else class="muted">暂无申领记录</view>
+  </view>
+</view>

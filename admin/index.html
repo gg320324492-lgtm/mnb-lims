@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>实验室管理后台</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-logo">LAB</div>
+          <div>
+            <h1>实验室管理后台</h1>
+            <p>MVP 管理台</p>
+          </div>
+        </div>
+        <nav class="menu">
+          <button class="menu-item active" data-section="dashboard">数据概览</button>
+          <button class="menu-item" data-section="approvals">审批中心</button>
+          <button class="menu-item" data-section="devices">设备台账</button>
+          <button class="menu-item" data-section="consumables">耗材台账</button>
+          <button class="menu-item" data-section="inventory">库存出入库</button>
+          <button class="menu-item" data-section="borrows">借用记录</button>
+          <button class="menu-item" data-section="applications">申领记录</button>
+          <button class="menu-item" data-section="qrLogs">扫码日志</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h2 id="page-title">数据概览</h2>
+            <p id="page-desc">查看当前待审批、台账和记录概况</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="refresh-btn" class="primary-btn">刷新数据</button>
+          </div>
+        </header>
+
+        <section id="global-message" class="message hidden"></section>
+
+        <section class="section active" data-name="dashboard">
+          <div id="stats-cards" class="stats-grid"></div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3>系统说明</h3>
+            </div>
+            <div class="panel-body intro-text">
+              <p>当前管理后台为 MVP 版本，重点覆盖设备借用、耗材申领与库存管理场景。</p>
+              <p>你可以先用这个后台完成：审批操作、查看设备/耗材基础信息、查看借用/申领记录。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="approvals">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>审批中心</h3>
+              <p>统一处理借用、耗材申领审批</p>
+            </div>
+            <div class="panel-body">
+              <div id="approvals-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="devices">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>设备台账</h3>
+            </div>
+            <div class="panel-body">
+              <form id="device-create-form" class="form-stack" style="margin-bottom: 14px;">
+                <label>
+                  <span>设备名称</span>
+                  <input id="device-create-name" type="text" required />
+                </label>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+                  <label>
+                    <span>设备编号</span>
+                    <input id="device-create-code" type="text" placeholder="例如 DEV-1001" />
+                  </label>
+                  <label>
+                    <span>分类</span>
+                    <input id="device-create-category" type="text" placeholder="例如：电子仪器" />
+                  </label>
+                  <label>
+                    <span>状态</span>
+                    <select id="device-create-status">
+                      <option value="available">可用</option>
+                      <option value="borrowed">借出中</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="submit" class="primary-btn">新增设备（含二维码）</button>
+              </form>
+              <div id="devices-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="consumables">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>耗材台账</h3>
+            </div>
+            <div class="panel-body">
+              <form id="consumable-create-form" class="form-stack" style="margin-bottom: 14px;">
+                <label>
+                  <span>耗材名称</span>
+                  <input id="consumable-create-name" type="text" required />
+                </label>
+                <label>
+                  <span>分类</span>
+                  <input id="consumable-create-category" type="text" placeholder="例如：防护用品" />
+                </label>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+                  <label>
+                    <span>单位</span>
+                    <input id="consumable-create-unit" type="text" value="个" />
+                  </label>
+                  <label>
+                    <span>初始库存</span>
+                    <input id="consumable-create-stock" type="number" min="0" value="0" />
+                  </label>
+                  <label>
+                    <span>安全库存</span>
+                    <input id="consumable-create-safe-stock" type="number" min="0" value="0" />
+                  </label>
+                </div>
+                <label>
+                  <span>照片（拍照/上传）</span>
+                  <input id="consumable-create-photo" type="file" accept="image/*" capture="environment" />
+                </label>
+                <button type="submit" class="primary-btn">新增耗材（含二维码）</button>
+              </form>
+              <div id="consumables-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="inventory">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>库存洞察（多/少）</h3>
+              <p>基于安全库存线估算“缺货/富余”，给出补货与少买建议</p>
+            </div>
+            <div class="panel-body">
+              <label>
+                <span>仓库</span>
+                <select id="inventory-warehouse"></select>
+              </label>
+              <div style="height: 10px;"></div>
+              <div id="stock-summary" class="muted" style="margin-bottom: 14px;"></div>
+              <div style="margin-bottom: 14px;">
+                <h4 style="margin: 0 0 8px;">低库存（缺口）</h4>
+                <div id="stock-low-table"></div>
+              </div>
+              <div>
+                <h4 style="margin: 0 0 8px;">库存过多（富余）</h4>
+                <div id="stock-surplus-table"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3>出入库清单（进货/出货）</h3>
+              <p>提交后会同步更新耗材库存与预警状态</p>
+            </div>
+            <div class="panel-body">
+              <form id="movement-form" class="form-stack">
+                <label>
+                  <span>类型</span>
+                  <select id="movement-type">
+                    <option value="in">进货</option>
+                    <option value="out">出货</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>耗材</span>
+                  <select id="movement-consumable"></select>
+                </label>
+
+                <label>
+                  <span>数量</span>
+                  <input id="movement-quantity" type="number" min="1" value="1" required />
+                </label>
+
+                <label>
+                  <span>备注</span>
+                  <input id="movement-note" type="text" placeholder="可选" />
+                </label>
+
+                <button type="submit" class="primary-btn">提交出入库</button>
+              </form>
+
+              <div style="height: 16px;"></div>
+              <div id="movements-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="borrows">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>借用记录</h3>
+            </div>
+            <div class="panel-body">
+              <div id="borrows-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="applications">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>申领记录</h3>
+            </div>
+            <div class="panel-body">
+              <div id="applications-table"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-name="qrLogs">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>扫码日志</h3>
+              <p>记录每次二维码扫描行为（设备/耗材）</p>
+            </div>
+            <div class="panel-body">
+              <div class="form-stack" style="margin-bottom: 12px;">
+                <label>
+                  <span>类型筛选</span>
+                  <select id="qr-log-type-filter">
+                    <option value="">全部</option>
+                    <option value="device">设备</option>
+                    <option value="consumable">耗材</option>
+                  </select>
+                </label>
+                <label>
+                  <span>对象ID</span>
+                  <input id="qr-log-entity-id-filter" type="number" min="1" placeholder="可选" />
+                </label>
+                <div class="action-group">
+                  <button id="qr-log-filter-btn" type="button" class="primary-btn">筛选</button>
+                  <button id="qr-log-reset-btn" type="button" class="action-btn">重置</button>
+                  <button id="qr-log-export-btn" type="button" class="action-btn approve">导出 CSV</button>
+                </div>
+                <div id="qr-log-filter-summary" class="muted"></div>
+              </div>
+              <div id="qr-logs-table"></div>
+              <div class="action-group" style="margin-top: 10px; align-items: center;">
+                <button id="qr-log-prev-btn" type="button" class="action-btn">上一页</button>
+                <span id="qr-log-page-info" class="muted">第 1 / 1 页</span>
+                <button id="qr-log-next-btn" type="button" class="action-btn">下一页</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
