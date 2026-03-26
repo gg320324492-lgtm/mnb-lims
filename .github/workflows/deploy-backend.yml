@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - staging
     paths:
       - 'backend/**'
       - 'scripts/deploy-backend.sh'
@@ -20,13 +21,20 @@ jobs:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
+          host: ${{ github.ref_name == 'main' && secrets.SSH_HOST_PRODUCTION || secrets.SSH_HOST_STAGING }}
+          username: ${{ github.ref_name == 'main' && secrets.SSH_USER_PRODUCTION || secrets.SSH_USER_STAGING }}
+          key: ${{ github.ref_name == 'main' && secrets.SSH_PRIVATE_KEY_PRODUCTION || secrets.SSH_PRIVATE_KEY_STAGING }}
+          port: ${{ github.ref_name == 'main' && secrets.SSH_PORT_PRODUCTION || secrets.SSH_PORT_STAGING || '22' }}
           script: |
             set -e
-            export APP_ROOT="${{ secrets.APP_ROOT || '/srv/lab-miniapp-mvp' }}"
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              export DEPLOY_ENV="production"
+              export APP_ROOT="${{ secrets.APP_ROOT_PRODUCTION || '/srv/lab-miniapp-mvp' }}"
+              export PM2_APP_NAME="${{ secrets.PM2_APP_NAME_PRODUCTION || 'lab-miniapp-backend-production' }}"
+            else
+              export DEPLOY_ENV="staging"
+              export APP_ROOT="${{ secrets.APP_ROOT_STAGING || '/srv/lab-miniapp-mvp-staging' }}"
+              export PM2_APP_NAME="${{ secrets.PM2_APP_NAME_STAGING || 'lab-miniapp-backend-staging' }}"
+            fi
             export DEPLOY_BRANCH="${{ github.ref_name }}"
-            export PM2_APP_NAME="lab-miniapp-backend"
             bash "$APP_ROOT/scripts/deploy-backend.sh"
