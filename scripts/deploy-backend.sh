@@ -52,10 +52,10 @@ fi
 pm2 save
 
 echo "[deploy] health check"
-HEALTH_URL="$(grep -E '^PUBLIC_WEB_BASE=' "$BACKEND_DIR/.env" | cut -d'=' -f2- | tr -d '\r')"
-if [ -z "$HEALTH_URL" ]; then
-  HEALTH_URL="http://127.0.0.1:$(grep -E '^PORT=' "$BACKEND_DIR/.env" | cut -d'=' -f2- | tr -d '\r')"
+HEALTH_PORT="$(grep -E '^PORT=' "$BACKEND_DIR/.env" | cut -d'=' -f2- | tr -d '\r')"
+if [ -z "$HEALTH_PORT" ]; then
+  HEALTH_PORT="3000"
 fi
-curl -fsS "$HEALTH_URL/api/health" >/dev/null
+curl -fsS "http://127.0.0.1:${HEALTH_PORT}/api/health" >/dev/null
 
 echo "[deploy] done"
