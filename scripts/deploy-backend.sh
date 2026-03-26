@@ -25,9 +25,25 @@ fi
 cd "$APP_ROOT"
 
 echo "[deploy] fetch and checkout $BRANCH"
-git fetch origin "$BRANCH"
+retry_git() {
+  local max_attempts=5
+  local attempt=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      return 1
+    fi
+    echo "[deploy] git command failed, retry $attempt/$max_attempts ..."
+    attempt=$((attempt + 1))
+    sleep 3
+  done
+}
+
+retry_git git fetch origin "$BRANCH"
 git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH"
+retry_git git pull --ff-only origin "$BRANCH"
 
 cd "$BACKEND_DIR"
 
