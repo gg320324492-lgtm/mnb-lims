@@ -140,6 +140,39 @@ App({
     });
   },
 
+  async loginByWechat() {
+    return new Promise((resolve, reject) => {
+      wx.login({
+        success: async (res) => {
+          if (!res.code) {
+            reject(new Error('获取微信 code 失败'));
+            return;
+          }
+          try {
+            const loginRes = await this.requestRaw('/api/auth/login', 'POST', {
+              loginType: 'wechat',
+              wxCode: res.code
+            });
+            const body = loginRes.data || {};
+            if (loginRes.statusCode < 200 || loginRes.statusCode >= 300 || body.code !== 0 || !body.data) {
+              reject(new Error(body.message || '微信登录失败'));
+              return;
+            }
+            this.setAuth(body.data);
+            if (body.data.user) {
+              this.globalData.currentUserId = Number(body.data.user.id) || this.globalData.currentUserId;
+              wx.setStorageSync('currentUserId', this.globalData.currentUserId);
+            }
+            resolve(body.data);
+          } catch (err) {
+            reject(err);
+          }
+        },
+        fail: () => reject(new Error('微信登录接口调用失败'))
+      });
+    });
+  },
+
   async loginByCurrentUser() {
     const userId = Number(this.globalData.currentUserId || 0);
     if (!userId) {

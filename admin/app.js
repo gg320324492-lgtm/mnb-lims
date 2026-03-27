@@ -1656,6 +1656,259 @@ function bindEvents() {
       loadUserOps().catch((error) => renderUserOpNotices([{ message: error.message || "刷新日志失败" }], true));
     });
   }
+
+  // 退出登录
+  const logoutBtn = document.getElementById("logout-btn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+      state.auth.accessToken = "";
+      state.auth.refreshToken = "";
+      state.auth.user = null;
+      renderAuthSummary();
+      showLoginScreen();
+    });
+  }
 }
 
+// ===== 登录屏逻辑 =====
+
+function showLoginScreen() {
+  const screen = document.getElementById("login-screen");
+  const app = document.getElementById("main-app");
+  if (screen) {
+    screen.style.display = "flex";
+    screen.classList.remove("leaving");
+  }
+  if (app) app.style.display = "none";
+  startLoginCanvas();
+}
+
+function hideLoginScreen() {
+  const screen = document.getElementById("login-screen");
+  const app = document.getElementById("main-app");
+  if (!screen) return;
+  screen.classList.add("leaving");
+  setTimeout(() => {
+    screen.style.display = "none";
+    if (app) app.style.display = "flex";
+    stopLoginCanvas();
+  }, 380);
+}
+
+// 粒子动画
+let _canvasAnimId = null;
+let _canvasRunning = false;
+
+function startLoginCanvas() {
+  const canvas = document.getElementById("login-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  _canvasRunning = true;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  const PARTICLE_COUNT = 72;
+  const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    r: Math.random() * 1.8 + 0.4,
+    vx: (Math.random() - 0.5) * 0.35,
+    vy: (Math.random() - 0.5) * 0.35,
+    alpha: Math.random() * 0.5 + 0.15,
+    color: Math.random() > 0.5 ? "79,142,247" : "34,211,238"
+  }));
+
+  const CONNECTION_DIST = 140;
+
+  function draw() {
+    if (!_canvasRunning) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw connections
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CONNECTION_DIST) {
+          const opacity = (1 - dist / CONNECTION_DIST) * 0.18;
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(79,142,247,${opacity})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw particles
+    particles.forEach((p) => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
+      ctx.fill();
+    });
+
+    _canvasAnimId = requestAnimationFrame(draw);
+  }
+
+  draw();
+}
+
+function stopLoginCanvas() {
+  _canvasRunning = false;
+  if (_canvasAnimId) {
+    cancelAnimationFrame(_canvasAnimId);
+    _canvasAnimId = null;
+  }
+}
+
+function setLoginError(msg) {
+  const el = document.getElementById("login-error");
+  if (!el) return;
+  if (msg) {
+    el.textContent = msg;
+    el.style.display = "block";
+  } else {
+    el.style.display = "none";
+    el.textContent = "";
+  }
+}
+
+function setLoginBtnLoading(formId, loading) {
+  const form = document.getElementById(formId);
+  if (!form) return;
+  const btn = form.querySelector(".login-btn");
+  if (!btn) return;
+  const textEl = btn.querySelector(".login-btn-text");
+  const spinnerEl = btn.querySelector(".login-btn-spinner");
+  btn.disabled = loading;
+  if (textEl) textEl.style.display = loading ? "none" : "";
+  if (spinnerEl) spinnerEl.style.display = loading ? "" : "none";
+}
+
+async function handleLoginScreenSubmit(loginType) {
+  const formId = loginType === "sso" ? "login-form-sso" : "login-form-password";
+  setLoginError("");
+  setLoginBtnLoading(formId, true);
+
+  try {
+    if (loginType === "sso") {
+      state.auth.loginType = "sso";
+      state.auth.ssoProvider = String((document.getElementById("auth-sso-provider") || {}).value || "").trim();
+      state.auth.ssoSubject = String((document.getElementById("auth-sso-subject") || {}).value || "").trim();
+    } else {
+      state.auth.loginType = "password";
+      state.auth.account = String((document.getElementById("auth-account") || {}).value || "").trim();
+      state.auth.password = String((document.getElementById("auth-password") || {}).value || "");
+    }
+
+    state.auth.accessToken = "";
+    state.auth.refreshToken = "";
+    state.auth.user = null;
+
+    await loginAdmin();
+    hideLoginScreen();
+    await loadAll();
+  } catch (err) {
+    setLoginError(err.message || "登录失败，请检查账号密码");
+  } finally {
+    setLoginBtnLoading(formId, false);
+  }
+}
+
+function initLoginScreen() {
+  // Tab 切换
+  document.querySelectorAll(".login-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".login-tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".login-form").forEach((f) => f.classList.remove("active"));
+      tab.classList.add("active");
+      const formId = `login-form-${tab.dataset.type}`;
+      const form = document.getElementById(formId);
+      if (form) form.classList.add("active");
+      setLoginError("");
+    });
+  });
+
+  // 密码可见切换
+  const toggleBtn = document.getElementById("toggle-password");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", () => {
+      const input = document.getElementById("auth-password");
+      const eyeOpen = document.getElementById("eye-open");
+      const eyeClosed = document.getElementById("eye-closed");
+      if (!input) return;
+      const isText = input.type === "text";
+      input.type = isText ? "password" : "text";
+      if (eyeOpen) eyeOpen.style.display = isText ? "" : "none";
+      if (eyeClosed) eyeClosed.style.display = isText ? "none" : "";
+    });
+  }
+
+  // 密码表单提交
+  const pwForm = document.getElementById("login-form-password");
+  if (pwForm) {
+    pwForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleLoginScreenSubmit("password");
+    });
+  }
+
+  // SSO 表单提交
+  const ssoForm = document.getElementById("login-form-sso");
+  if (ssoForm) {
+    ssoForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleLoginScreenSubmit("sso");
+    });
+  }
+
+  // 预填上次登录的账号
+  const savedAccount = localStorage.getItem("adminLoginAccount");
+  if (savedAccount) {
+    const el = document.getElementById("auth-account");
+    if (el) el.value = savedAccount;
+  }
+  const savedSsoProvider = localStorage.getItem("adminLoginSsoProvider");
+  if (savedSsoProvider) {
+    const el = document.getElementById("auth-sso-provider");
+    if (el) el.value = savedSsoProvider;
+  }
+  const savedSsoSubject = localStorage.getItem("adminLoginSsoSubject");
+  if (savedSsoSubject) {
+    const el = document.getElementById("auth-sso-subject");
+    if (el) el.value = savedSsoSubject;
+  }
+}
+
+// ===== 启动 =====
 bindEvents();
+initLoginScreen();
+
+// 已有 token 则直接进主界面，否则显示登录屏
+if (state.auth.accessToken) {
+  const mainApp = document.getElementById("main-app");
+  const loginScreen = document.getElementById("login-screen");
+  if (mainApp) mainApp.style.display = "flex";
+  if (loginScreen) loginScreen.style.display = "none";
+  loadAll().catch(() => {
+    // token 失效则回到登录屏
+    showLoginScreen();
+  });
+} else {
+  showLoginScreen();
+}

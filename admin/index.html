@@ -10,7 +10,111 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="layout">
+
+    <!-- ===== 登录屏 ===== -->
+    <div id="login-screen" class="login-screen">
+      <!-- 动态背景粒子画布 -->
+      <canvas id="login-canvas" class="login-canvas"></canvas>
+
+      <div class="login-box">
+        <!-- Logo 区域 -->
+        <div class="login-logo">
+          <div class="login-logo-icon">
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="40" height="40" rx="10" fill="url(#lg)" />
+              <path d="M10 28 L20 12 L30 28" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              <circle cx="20" cy="21" r="3" fill="white" opacity="0.9"/>
+              <defs>
+                <linearGradient id="lg" x1="0" y1="0" x2="40" y2="40">
+                  <stop offset="0%" stop-color="#4f8ef7"/>
+                  <stop offset="100%" stop-color="#22d3ee"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="login-logo-text">
+            <span class="login-logo-title">实验室管理系统</span>
+            <span class="login-logo-sub">Lab Management · MVP</span>
+          </div>
+        </div>
+
+        <!-- 标签切换 -->
+        <div class="login-tabs">
+          <button class="login-tab active" data-type="password">账号密码</button>
+          <button class="login-tab" data-type="sso">SSO 登录</button>
+        </div>
+
+        <!-- 账号密码表单 -->
+        <form id="login-form-password" class="login-form active" autocomplete="on">
+          <div class="login-field">
+            <label>账号</label>
+            <div class="login-input-wrap">
+              <svg class="login-input-icon" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input id="auth-account" type="text" placeholder="例如 admin" autocomplete="username" />
+            </div>
+          </div>
+          <div class="login-field">
+            <label>密码</label>
+            <div class="login-input-wrap">
+              <svg class="login-input-icon" viewBox="0 0 20 20" fill="none">
+                <rect x="4" y="9" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M7 9V7a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input id="auth-password" type="password" placeholder="输入密码" autocomplete="current-password" />
+              <button type="button" class="login-eye-btn" id="toggle-password">
+                <svg id="eye-open" viewBox="0 0 20 20" fill="none">
+                  <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+                <svg id="eye-closed" viewBox="0 0 20 20" fill="none" style="display:none">
+                  <path d="M3 3l14 14M8.5 8.7A2.5 2.5 0 0013 12M5 5.5C3.6 6.8 2.5 8.3 2 10c1.3 3.9 4.7 6.5 8 6.5a9 9 0 004-1M7.5 4c.8-.3 1.6-.5 2.5-.5 3.3 0 6.7 2.6 8 6.5a12 12 0 01-2 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <button type="submit" class="login-btn" id="auth-login-btn">
+            <span class="login-btn-text">登 录</span>
+            <span class="login-btn-spinner" style="display:none"></span>
+          </button>
+        </form>
+
+        <!-- SSO 表单 -->
+        <form id="login-form-sso" class="login-form" autocomplete="off">
+          <div class="login-field">
+            <label>SSO 提供方</label>
+            <div class="login-input-wrap">
+              <svg class="login-input-icon" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M10 3c0 0-3 3-3 7s3 7 3 7M10 3c0 0 3 3 3 7s-3 7-3 7M3 10h14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              </svg>
+              <input id="auth-sso-provider" type="text" placeholder="例如 feishu" />
+            </div>
+          </div>
+          <div class="login-field">
+            <label>SSO 标识</label>
+            <div class="login-input-wrap">
+              <svg class="login-input-icon" viewBox="0 0 20 20" fill="none">
+                <path d="M4 4h12a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M3 7l7 5 7-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input id="auth-sso-subject" type="text" placeholder="例如 admin@lab.local" />
+            </div>
+          </div>
+          <button type="submit" class="login-btn" id="auth-sso-btn">
+            <span class="login-btn-text">SSO 登录</span>
+            <span class="login-btn-spinner" style="display:none"></span>
+          </button>
+        </form>
+
+        <div id="login-error" class="login-error" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ===== 主界面（登录后展示）===== -->
+    <div id="main-app" class="layout" style="display:none">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-logo">LAB</div>
@@ -30,6 +134,10 @@
           <button class="menu-item" data-section="qrLogs">📷 扫码日志</button>
           <button class="menu-item" data-section="userOps">👥 用户与权限</button>
         </nav>
+        <div class="sidebar-footer">
+          <div id="auth-summary" class="sidebar-user">未登录</div>
+          <button id="logout-btn" class="logout-btn">退出登录</button>
+        </div>
       </aside>
 
       <main class="main">
@@ -38,17 +146,7 @@
             <h2 id="page-title">数据概览</h2>
             <p id="page-desc">查看当前待审批、台账和记录概况</p>
           </div>
-          <div class="topbar-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <span id="auth-summary" class="muted">未登录</span>
-            <select id="auth-login-type" style="width:120px;">
-              <option value="password">账号密码</option>
-              <option value="sso">SSO</option>
-            </select>
-            <input id="auth-account" type="text" placeholder="账号（如 admin）" style="width:170px;" />
-            <input id="auth-password" type="password" placeholder="密码" style="width:140px;" />
-            <input id="auth-sso-provider" type="text" placeholder="SSO 提供方（如 feishu）" style="width:170px;" />
-            <input id="auth-sso-subject" type="text" placeholder="SSO 标识（如 admin@lab.local）" style="width:220px;" />
-            <button id="auth-login-btn" class="action-btn">登录</button>
+          <div class="topbar-actions">
             <button id="refresh-btn" class="primary-btn">刷新数据</button>
           </div>
         </header>
@@ -58,9 +156,7 @@
         <section class="section active" data-name="dashboard">
           <div id="stats-cards" class="stats-grid"></div>
           <div class="panel">
-            <div class="panel-header">
-              <h3>系统说明</h3>
-            </div>
+            <div class="panel-header"><h3>系统说明</h3></div>
             <div class="panel-body intro-text">
               <p>当前管理后台为 MVP 版本，重点覆盖设备借用、耗材申领与库存管理场景。</p>
               <p>你可以先用这个后台完成：审批操作、查看设备/耗材基础信息、查看借用/申领记录。</p>
@@ -70,10 +166,7 @@
 
         <section class="section" data-name="approvals">
           <div class="panel">
-            <div class="panel-header">
-              <h3>审批中心</h3>
-              <p>统一处理借用、耗材申领审批</p>
-            </div>
+            <div class="panel-header"><h3>审批中心</h3><p>统一处理借用、耗材申领审批</p></div>
             <div class="panel-body">
               <div id="approvals-table"></div>
               <div class="action-group" style="margin-top: 10px; align-items: center;">
@@ -87,31 +180,14 @@
 
         <section class="section" data-name="devices">
           <div class="panel">
-            <div class="panel-header">
-              <h3>设备台账</h3>
-            </div>
+            <div class="panel-header"><h3>设备台账</h3></div>
             <div class="panel-body">
               <form id="device-create-form" class="form-stack" style="margin-bottom: 14px;">
-                <label>
-                  <span>设备名称</span>
-                  <input id="device-create-name" type="text" required />
-                </label>
+                <label><span>设备名称</span><input id="device-create-name" type="text" required /></label>
                 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
-                  <label>
-                    <span>设备编号</span>
-                    <input id="device-create-code" type="text" placeholder="例如 DEV-1001" />
-                  </label>
-                  <label>
-                    <span>分类</span>
-                    <input id="device-create-category" type="text" placeholder="例如：电子仪器" />
-                  </label>
-                  <label>
-                    <span>状态</span>
-                    <select id="device-create-status">
-                      <option value="available">可用</option>
-                      <option value="borrowed">借出中</option>
-                    </select>
-                  </label>
+                  <label><span>设备编号</span><input id="device-create-code" type="text" placeholder="例如 DEV-1001" /></label>
+                  <label><span>分类</span><input id="device-create-category" type="text" placeholder="例如：电子仪器" /></label>
+                  <label><span>状态</span><select id="device-create-status"><option value="available">可用</option><option value="borrowed">借出中</option></select></label>
                 </div>
                 <button type="submit" class="primary-btn">新增设备（含二维码）</button>
               </form>
@@ -122,37 +198,17 @@
 
         <section class="section" data-name="consumables">
           <div class="panel">
-            <div class="panel-header">
-              <h3>耗材台账</h3>
-            </div>
+            <div class="panel-header"><h3>耗材台账</h3></div>
             <div class="panel-body">
               <form id="consumable-create-form" class="form-stack" style="margin-bottom: 14px;">
-                <label>
-                  <span>耗材名称</span>
-                  <input id="consumable-create-name" type="text" required />
-                </label>
-                <label>
-                  <span>分类</span>
-                  <input id="consumable-create-category" type="text" placeholder="例如：防护用品" />
-                </label>
+                <label><span>耗材名称</span><input id="consumable-create-name" type="text" required /></label>
+                <label><span>分类</span><input id="consumable-create-category" type="text" placeholder="例如：防护用品" /></label>
                 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
-                  <label>
-                    <span>单位</span>
-                    <input id="consumable-create-unit" type="text" value="个" />
-                  </label>
-                  <label>
-                    <span>初始库存</span>
-                    <input id="consumable-create-stock" type="number" min="0" value="0" />
-                  </label>
-                  <label>
-                    <span>安全库存</span>
-                    <input id="consumable-create-safe-stock" type="number" min="0" value="0" />
-                  </label>
+                  <label><span>单位</span><input id="consumable-create-unit" type="text" value="个" /></label>
+                  <label><span>初始库存</span><input id="consumable-create-stock" type="number" min="0" value="0" /></label>
+                  <label><span>安全库存</span><input id="consumable-create-safe-stock" type="number" min="0" value="0" /></label>
                 </div>
-                <label>
-                  <span>照片（拍照/上传）</span>
-                  <input id="consumable-create-photo" type="file" accept="image/*" capture="environment" />
-                </label>
+                <label><span>照片（拍照/上传）</span><input id="consumable-create-photo" type="file" accept="image/*" capture="environment" /></label>
                 <button type="submit" class="primary-btn">新增耗材（含二维码）</button>
               </form>
               <div id="consumables-table"></div>
@@ -162,61 +218,25 @@
 
         <section class="section" data-name="inventory">
           <div class="panel">
-            <div class="panel-header">
-              <h3>库存洞察（多/少）</h3>
-              <p>基于安全库存线估算“缺货/富余”，给出补货与少买建议</p>
-            </div>
+            <div class="panel-header"><h3>库存洞察（多/少）</h3><p>基于安全库存线估算"缺货/富余"，给出补货与少买建议</p></div>
             <div class="panel-body">
-              <label>
-                <span>仓库</span>
-                <select id="inventory-warehouse"></select>
-              </label>
+              <label><span>仓库</span><select id="inventory-warehouse"></select></label>
               <div style="height: 10px;"></div>
               <div id="stock-summary" class="muted" style="margin-bottom: 14px;"></div>
-              <div style="margin-bottom: 14px;">
-                <h4 style="margin: 0 0 8px;">低库存（缺口）</h4>
-                <div id="stock-low-table"></div>
-              </div>
-              <div>
-                <h4 style="margin: 0 0 8px;">库存过多（富余）</h4>
-                <div id="stock-surplus-table"></div>
-              </div>
+              <div style="margin-bottom: 14px;"><h4 style="margin: 0 0 8px;">低库存（缺口）</h4><div id="stock-low-table"></div></div>
+              <div><h4 style="margin: 0 0 8px;">库存过多（富余）</h4><div id="stock-surplus-table"></div></div>
             </div>
           </div>
-
           <div class="panel">
-            <div class="panel-header">
-              <h3>出入库清单（进货/出货）</h3>
-              <p>提交后会同步更新耗材库存与预警状态</p>
-            </div>
+            <div class="panel-header"><h3>出入库清单（进货/出货）</h3><p>提交后会同步更新耗材库存与预警状态</p></div>
             <div class="panel-body">
               <form id="movement-form" class="form-stack">
-                <label>
-                  <span>类型</span>
-                  <select id="movement-type">
-                    <option value="in">进货</option>
-                    <option value="out">出货</option>
-                  </select>
-                </label>
-
-                <label>
-                  <span>耗材</span>
-                  <select id="movement-consumable"></select>
-                </label>
-
-                <label>
-                  <span>数量</span>
-                  <input id="movement-quantity" type="number" min="1" value="1" required />
-                </label>
-
-                <label>
-                  <span>备注</span>
-                  <input id="movement-note" type="text" placeholder="可选" />
-                </label>
-
+                <label><span>类型</span><select id="movement-type"><option value="in">进货</option><option value="out">出货</option></select></label>
+                <label><span>耗材</span><select id="movement-consumable"></select></label>
+                <label><span>数量</span><input id="movement-quantity" type="number" min="1" value="1" required /></label>
+                <label><span>备注</span><input id="movement-note" type="text" placeholder="可选" /></label>
                 <button type="submit" class="primary-btn">提交出入库</button>
               </form>
-
               <div style="height: 16px;"></div>
               <div id="movements-table"></div>
             </div>
@@ -225,26 +245,15 @@
 
         <section class="section" data-name="borrows">
           <div class="panel">
-            <div class="panel-header">
-              <h3>借用记录</h3>
-            </div>
+            <div class="panel-header"><h3>借用记录</h3></div>
             <div class="panel-body">
               <div class="form-stack" style="margin-bottom: 12px;">
-                <label>
-                  <span>状态筛选</span>
+                <label><span>状态筛选</span>
                   <select id="borrow-status-filter">
-                    <option value="">全部</option>
-                    <option value="pending">待审批</option>
-                    <option value="approved">已通过</option>
-                    <option value="rejected">已驳回</option>
-                    <option value="returned">已归还</option>
-                    <option value="cancelled">已取消</option>
+                    <option value="">全部</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="rejected">已驳回</option><option value="returned">已归还</option><option value="cancelled">已取消</option>
                   </select>
                 </label>
-                <label>
-                  <span>申请人ID</span>
-                  <input id="borrow-user-filter" type="number" min="1" placeholder="可选" />
-                </label>
+                <label><span>申请人ID</span><input id="borrow-user-filter" type="number" min="1" placeholder="可选" /></label>
                 <div class="action-group">
                   <button id="borrow-filter-btn" type="button" class="primary-btn">筛选</button>
                   <button id="borrow-reset-btn" type="button" class="action-btn">重置</button>
@@ -262,25 +271,15 @@
 
         <section class="section" data-name="applications">
           <div class="panel">
-            <div class="panel-header">
-              <h3>申领记录</h3>
-            </div>
+            <div class="panel-header"><h3>申领记录</h3></div>
             <div class="panel-body">
               <div class="form-stack" style="margin-bottom: 12px;">
-                <label>
-                  <span>状态筛选</span>
+                <label><span>状态筛选</span>
                   <select id="application-status-filter">
-                    <option value="">全部</option>
-                    <option value="pending">待审批</option>
-                    <option value="approved">已通过</option>
-                    <option value="rejected">已驳回</option>
-                    <option value="cancelled">已取消</option>
+                    <option value="">全部</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="rejected">已驳回</option><option value="cancelled">已取消</option>
                   </select>
                 </label>
-                <label>
-                  <span>申请人ID</span>
-                  <input id="application-user-filter" type="number" min="1" placeholder="可选" />
-                </label>
+                <label><span>申请人ID</span><input id="application-user-filter" type="number" min="1" placeholder="可选" /></label>
                 <div class="action-group">
                   <button id="application-filter-btn" type="button" class="primary-btn">筛选</button>
                   <button id="application-reset-btn" type="button" class="action-btn">重置</button>
@@ -296,12 +295,35 @@
           </div>
         </section>
 
+        <section class="section" data-name="qrLogs">
+          <div class="panel">
+            <div class="panel-header"><h3>扫码日志</h3></div>
+            <div class="panel-body">
+              <div class="form-stack" style="margin-bottom: 12px;">
+                <label><span>类型</span>
+                  <select id="qr-log-type-filter"><option value="">全部</option><option value="device">设备</option><option value="consumable">耗材</option></select>
+                </label>
+                <label><span>对象 ID</span><input id="qr-log-entity-id-filter" type="number" min="1" placeholder="可选" /></label>
+                <div class="action-group">
+                  <button id="qr-log-filter-btn" type="button" class="primary-btn">筛选</button>
+                  <button id="qr-log-reset-btn" type="button" class="action-btn">重置</button>
+                  <button id="qr-log-export-btn" type="button" class="action-btn">导出 CSV</button>
+                </div>
+                <span id="qr-log-filter-summary" class="muted"></span>
+              </div>
+              <div id="qr-logs-table"></div>
+              <div class="action-group" style="margin-top: 10px; align-items: center;">
+                <button id="qr-log-prev-btn" type="button" class="action-btn">上一页</button>
+                <span id="qr-log-page-info" class="muted">第 1 / 1 页，共 0 条</span>
+                <button id="qr-log-next-btn" type="button" class="action-btn">下一页</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="section" data-name="userOps">
           <div class="panel">
-            <div class="panel-header">
-              <h3>用户与权限</h3>
-              <p>支持账号禁用、角色变更与操作日志审计</p>
-            </div>
+            <div class="panel-header"><h3>用户与权限</h3><p>支持账号禁用、角色变更与操作日志审计</p></div>
             <div class="panel-body">
               <div id="user-op-notices" class="message hidden"></div>
               <div style="margin-bottom: 12px;" class="action-group">
@@ -320,3 +342,5 @@
     <script src="./app.js"></script>
   </body>
 </html>
+          <div class="panel">
+            <div 

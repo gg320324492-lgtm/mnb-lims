@@ -1,16 +1,44 @@
 <view class="container">
+
+  <!-- 用户信息卡片 -->
+  <view class="user-card">
+    <view class="user-avatar">
+      <text class="user-avatar-text">{{isLoggedIn ? currentUserName.slice(0,1) : '?'}}</text>
+    </view>
+    <view class="user-info">
+      <text class="user-name">{{isLoggedIn ? currentUserName : '未登录'}}</text>
+      <text wx:if="{{isLoggedIn && currentUserRole}}" class="user-role">{{currentUserRole === 'admin' ? '管理员' : currentUserRole === 'teacher' ? '教师' : '学生'}}</text>
+      <text wx:else class="user-role-empty">点击下方按钮登录</text>
+    </view>
+  </view>
+
+  <!-- 微信登录 / 退出 -->
+  <view class="auth-section">
+    <block wx:if="{{!isLoggedIn}}">
+      <button class="btn-wx-login" bindtap="onWxLogin" loading="{{wxLoginLoading}}" disabled="{{wxLoginLoading}}">
+        <image class="wx-icon" src="/miniapp-wx/images/icons/usercenter.png" mode="aspectFit" />
+        <text>微信一键登录</text>
+      </button>
+    </block>
+    <block wx:else>
+      <button class="btn-logout" bindtap="onLogout">退出登录</button>
+    </block>
+  </view>
+
+  <!-- 账号与环境 -->
   <view class="card">
     <view class="title">账号与环境</view>
-    <view class="row"><text class="label">当前用户</text><text>{{currentUserName}}</text></view>
     <view class="label" style="margin-top: 12rpx;">后端 API 地址</view>
     <input class="input" value="{{apiBase}}" bindinput="onApiInput" placeholder="https://你的域名" />
     <button class="btn-primary" bindtap="saveApiBase">保存地址</button>
     <view class="muted">发布前请改为腾讯云 HTTPS 域名，并在小程序后台配置合法域名。</view>
   </view>
 
-  <view class="card">
+  <!-- 借用记录 -->
+  <view class="card" wx:if="{{isLoggedIn}}">
     <view class="title">我的借用记录</view>
-    <block wx:if="{{borrows.length}}">
+    <view wx:if="{{loading}}" class="muted">加载中…</view>
+    <block wx:elif="{{borrows.length}}">
       <view wx:for="{{borrows}}" wx:key="id" class="record-item">
         <view class="row">
           <text>{{item.deviceName || '设备'}}</text>
@@ -22,9 +50,11 @@
     <view wx:else class="muted">暂无借用记录</view>
   </view>
 
-  <view class="card">
+  <!-- 申领记录 -->
+  <view class="card" wx:if="{{isLoggedIn}}">
     <view class="title">我的申领记录</view>
-    <block wx:if="{{applications.length}}">
+    <view wx:if="{{loading}}" class="muted">加载中…</view>
+    <block wx:elif="{{applications.length}}">
       <view wx:for="{{applications}}" wx:key="id" class="record-item">
         <view class="row">
           <text>{{item.consumableName || '耗材'}} x{{item.quantity}}</text>
@@ -35,4 +65,5 @@
     </block>
     <view wx:else class="muted">暂无申领记录</view>
   </view>
+
 </view>

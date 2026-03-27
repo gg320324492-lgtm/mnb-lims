@@ -155,7 +155,7 @@ function sanitizeUser(user) {
 
 function toLoginType(payload) {
   const explicit = String((payload && payload.loginType) || "").trim();
-  if (["password", "sso", "userId"].includes(explicit)) {
+  if (["password", "sso", "userId", "wechat"].includes(explicit)) {
     return explicit;
   }
 
@@ -164,6 +164,9 @@ function toLoginType(payload) {
   }
   if (payload && payload.ssoProvider && payload.ssoSubject) {
     return "sso";
+  }
+  if (payload && payload.wxCode) {
+    return "wechat";
   }
   return "userId";
 }
@@ -481,6 +484,67 @@ async function authenticateUser(payload) {
     const rawUser = await findUserBySso(ssoProvider, ssoSubject);
     if (!rawUser) {
       return { errorType: "not_found", message: "SSO 账号不存在" };
+    }
+
+    return { user: sanitizeUser(rawUser), loginType };
+  }
+
+  if (loginType === "wechat") {
+    const wxCode = String(payload.wxCode || "").trim();
+    if (!wxCode) {
+      return { errorType: "bad_request", message: "wxCode 不能为空" };
+    }
+
+    // 尝试通过微信 code2Session 换取 openid
+    const wxAppId = process.env.WX_APPID || "";
+    const wxAppSecret = process.env.WX_APP_SECRET || "";
+    let openid = null;
+
+    if (wxAppId && wxAppSecret) {
+      try {
+        const https = require("https");
+        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${encodeURIComponent(wxAppId)}&secret=${encodeURIComponent(wxAppSecret)}&js_code=${encodeURIComponent(wxCode)}&grant_type=authorization_code`;
+        openid = await new Promise((resolve, reject) => {
+          https.get(url, (res) => {
+            let data = "";
+            res.on("data", (chunk) => { data += chunk; });
+            res.on("end", () => {
+              try {
+                const json = JSON.parse(data);
+                if (json.openid) resolve(json.openid);
+                else reject(new Error(json.errmsg || "获取 openid 失败"));
+              } catch (e) { reject(e); }
+            });
+          }).on("error", reject);
+        });
+      } catch (err) {
+        return { errorType: "bad_request", message: `微信登录失败：${err.message}` };
+      }
+    } else {
+      // 开发/测试模式：wxCode 直接当 openid 使用
+      openid = wxCode;
+    }
+
+    // 查找或自动创建绑定了该 openid 的用户
+    const rawUser = await findUserBySso("wechat", openid);
+    if (!rawUser) {
+      if (mysqlStore.useMySql) {
+        // MySQL 模式下需管理员预先绑定微信 openid，不自动注册
+        return { errorType: "not_found", message: `微信账号未绑定，请联系管理员绑定 openid（${openid}）` };
+      }
+      // mockDb 模式：自动注册 student 角色新用户
+      const newUser = {
+        id: db.nextId(db.users),
+        name: `微信用户_${openid.slice(-6)}`,
+        account: `wx_${openid.slice(-8)}`,
+        ssoProvider: "wechat",
+        ssoSubject: openid,
+        role: "student",
+        enabled: true,
+        roleUpdatedAt: new Date().toISOString()
+      };
+      db.users.push(newUser);
+      return { user: sanitizeUser(newUser), loginType, isNewUser: true };
     }
 
     return { user: sanitizeUser(rawUser), loginType };
