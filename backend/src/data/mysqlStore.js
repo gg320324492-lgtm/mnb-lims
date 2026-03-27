@@ -82,7 +82,7 @@ async function getWarehouses() {
 }
 
 async function getDashboardStats() {
-  const [rows] = await Promise.all([
+  const results = await Promise.all([
     query("SELECT COUNT(*) AS value FROM approvals WHERE status = 'pending'"),
     query('SELECT COUNT(*) AS value FROM devices'),
     query('SELECT COUNT(*) AS value FROM consumables'),
@@ -91,11 +91,11 @@ async function getDashboardStats() {
   ]);
 
   return {
-    pendingApprovals: Number(rows[0][0].value || 0),
-    devicesCount: Number(rows[1][0].value || 0),
-    consumablesCount: Number(rows[2][0].value || 0),
-    borrowsCount: Number(rows[3][0].value || 0),
-    lowStockCount: Number(rows[4][0].value || 0)
+    pendingApprovals: Number(results[0][0].value || 0),
+    devicesCount: Number(results[1][0].value || 0),
+    consumablesCount: Number(results[2][0].value || 0),
+    borrowsCount: Number(results[3][0].value || 0),
+    lowStockCount: Number(results[4][0].value || 0)
   };
 }
 
