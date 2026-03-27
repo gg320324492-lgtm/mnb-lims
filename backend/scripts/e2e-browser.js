@@ -85,11 +85,17 @@ async function run() {
 
     // Admin 正常审批流程
     await page.goto(`${baseUrl}/admin/`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#auth-login-type');
-    await page.selectOption('#auth-login-type', 'password');
+    // 新登录界面：等待登录框出现（密码表单默认激活）
+    await page.waitForSelector('#auth-account', { timeout: 10000 });
     await page.fill('#auth-account', 'teacher.li');
     await page.fill('#auth-password', 'teacher123');
+    const adminLoginPromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/auth/login') && resp.request().method() === 'POST',
+      { timeout: 8000 }
+    );
     await page.click('#auth-login-btn');
+    await adminLoginPromise;
+    await page.waitForLoadState('networkidle', { timeout: 8000 });
 
     await page.click('.menu-item[data-section="approvals"]');
     await page.waitForSelector('#approvals-table table');
@@ -155,15 +161,15 @@ async function run() {
     await setUserRole(baseUrl, adminAuth.accessToken, 2, 'teacher');
     teacherRoleChanged = false;
 
-    // 等待前端检测到 ROLE_CHANGED（refresh 失败，accessToken 被清空，出现提示）
-    // 再重新填写账号密码登录，此时 accessToken 为空，loadAll 会走 loginAdmin 而不是 apiRequest
+    // 等待前端检测到 ROLE_CHANGED 后回到登录屏（showLoginScreen 被调用，#auth-account 变为可见）
     await page.waitForFunction(
       () => {
-        const msg = document.getElementById('global-message');
-        return msg && /角色已变更|重新登录/.test(msg.textContent || '');
+        const screen = document.getElementById('login-screen');
+        return screen && screen.style.display !== 'none';
       },
-      { timeout: 6000 }
+      { timeout: 8000 }
     );
+    await page.waitForSelector('#auth-account', { state: 'visible', timeout: 5000 });
 
     await page.fill('#auth-account', 'teacher.li');
     await page.fill('#auth-password', 'teacher123');
@@ -187,8 +193,18 @@ async function run() {
     );
     await page.click('#refresh-btn');
     await disabledRefreshPromise;
-    await page.waitForTimeout(400);
-    const disabledMsg = await page.locator('#global-message').innerText();
+    // 等待登录屏重新弹出（ACCOUNT_DISABLED 后 showLoginScreen 被调用）
+    await page.waitForFunction(
+      () => {
+        const screen = document.getElementById('login-screen');
+        return screen && screen.style.display !== 'none';
+      },
+      { timeout: 6000 }
+    );
+    // #global-message 在主界面里，即使不可见也能读 textContent
+    const disabledMsg = await page.evaluate(
+      () => (document.getElementById('global-message') || {}).textContent || ''
+    );
     if (!/禁用/.test(String(disabledMsg))) {
       throw new Error('account-disabled scenario not handled in browser flow');
     }

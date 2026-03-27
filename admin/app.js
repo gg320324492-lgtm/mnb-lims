@@ -357,6 +357,7 @@ async function _doRefreshAdminToken() {
       state.auth.refreshToken = '';
       state.auth.user = null;
       renderAuthSummary();
+      showLoginScreen();
       throw new Error('角色已变更，请重新登录');
     }
     if (hasDisabled) {
@@ -365,6 +366,7 @@ async function _doRefreshAdminToken() {
       state.auth.refreshToken = '';
       state.auth.user = null;
       renderAuthSummary();
+      showLoginScreen();
       throw new Error('账号已禁用');
     }
     throw new Error(json.message || '刷新登录态失败');
