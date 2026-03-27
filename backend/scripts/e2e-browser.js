@@ -155,6 +155,16 @@ async function run() {
     await setUserRole(baseUrl, adminAuth.accessToken, 2, 'teacher');
     teacherRoleChanged = false;
 
+    // 等待前端检测到 ROLE_CHANGED（refresh 失败，accessToken 被清空，出现提示）
+    // 再重新填写账号密码登录，此时 accessToken 为空，loadAll 会走 loginAdmin 而不是 apiRequest
+    await page.waitForFunction(
+      () => {
+        const msg = document.getElementById('global-message');
+        return msg && /角色已变更|重新登录/.test(msg.textContent || '');
+      },
+      { timeout: 6000 }
+    );
+
     await page.fill('#auth-account', 'teacher.li');
     await page.fill('#auth-password', 'teacher123');
     const loginPromise = page.waitForResponse(
@@ -163,7 +173,9 @@ async function run() {
     );
     await page.click('#auth-login-btn');
     await loginPromise;
-    await page.waitForTimeout(500);
+    // 等待网络空闲，确保 handleManualLogin -> loadAll 完整执行完毕
+    await page.waitForLoadState('networkidle', { timeout: 8000 });
+    await page.waitForTimeout(200);
 
     // 异常场景3：账号禁用后刷新，前端应提示账号禁用
     await setUserEnabled(baseUrl, adminAuth.accessToken, 2, false);
