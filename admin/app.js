@@ -996,7 +996,9 @@ async function loadAll() {
     setMessage("后台数据已刷新");
     setTimeout(() => setMessage(""), 1800);
   } catch (error) {
-    setMessage(error.message || "加载失败", true);
+    if (!/角色已变更|账号已禁用|refreshToken/.test(error.message || '')) {
+      setMessage(error.message || "加载失败", true);
+    }
   }
 }
 
