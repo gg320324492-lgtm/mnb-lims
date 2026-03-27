@@ -4,37 +4,42 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>实验室管理小程序</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="phone-shell">
       <header class="topbar">
-        <div>
-          <div class="eyebrow">实验室管理小程序</div>
+        <div class="topbar-left">
+          <div class="eyebrow">LAB · LIMS</div>
           <h1 id="page-title">首页</h1>
         </div>
         <select id="user-select" class="user-select"></select>
       </header>
 
       <main class="content">
+        <!-- HOME -->
         <section class="page active" data-page="home">
           <div class="hero-card">
-            <div>
-              <div class="hero-title">实验室物资一站式管理</div>
-              <div class="hero-desc">支持设备借用、耗材申领与我的记录查看</div>
-            </div>
+            <div class="hero-title">实验室物资管理</div>
+            <div class="hero-desc">设备借用 · 耗材申领 · 审批追踪，一站式闭环管理</div>
+            <div class="hero-badge">系统运行中</div>
           </div>
 
           <div id="home-stats" class="stat-grid"></div>
 
           <div class="quick-grid">
             <button class="quick-card" data-target="borrow">
+              <span class="quick-icon">🔬</span>
               <span class="quick-title">借用设备</span>
-              <span class="quick-desc">提交借用用途和归还时间</span>
+              <span class="quick-desc">提交借用申请</span>
             </button>
             <button class="quick-card" data-target="apply">
+              <span class="quick-icon">🧪</span>
               <span class="quick-title">申领耗材</span>
-              <span class="quick-desc">按需提交数量和用途</span>
+              <span class="quick-desc">按需填写用途</span>
             </button>
           </div>
 
@@ -44,12 +49,13 @@
           </div>
         </section>
 
+        <!-- BORROW -->
         <section class="page" data-page="borrow">
           <div class="panel">
-            <div class="panel-title">设备借用</div>
+            <div class="panel-title">设备借用申请</div>
             <form id="borrow-form" class="form-stack">
               <label>
-                <span>设备</span>
+                <span>选择设备</span>
                 <select name="deviceId" id="borrow-device"></select>
               </label>
               <label>
@@ -78,9 +84,10 @@
           </div>
         </section>
 
+        <!-- APPLY -->
         <section class="page" data-page="apply">
           <div class="panel">
-            <div class="panel-title">耗材申领</div>
+            <div class="panel-title">耗材申领申请</div>
             <form id="apply-form" class="form-stack">
               <label>
                 <span>仓库</span>
@@ -108,39 +115,39 @@
           </div>
         </section>
 
+        <!-- AI ASSISTANT -->
         <section class="page" data-page="assistant">
           <div class="panel">
-            <div class="panel-title">AI 数字员工（MVP）</div>
+            <div class="panel-title">AI 数字员工</div>
             <div class="list-stack">
-              <div class="list-card" style="padding: 14px;">
-                <div class="list-title">库存概览</div>
-                <div id="ai-stock-summary" class="list-desc">等待数据加载...</div>
+              <div class="list-card">
+                <div class="list-title">📊 库存概览</div>
+                <div id="ai-stock-summary" class="list-desc">加载中...</div>
               </div>
             </div>
           </div>
 
           <div class="panel">
-            <div class="panel-title">让它分析</div>
+            <div class="panel-title">智能分析</div>
             <div class="form-stack">
               <label>
                 <span>你的问题</span>
                 <textarea
                   id="ai-question"
                   rows="3"
-                  placeholder="例如：帮我借用示波器，2026-03-27归还。或：帮我在实验室申领一次性手套 2 盒。"
+                  placeholder="例如：帮我借用示波器，2026-04-10归还。或：帮我申领一次性手套 2 盒。"
                 ></textarea>
               </label>
               <button id="ai-ask-btn" type="button" class="primary-btn">开始分析</button>
             </div>
-
-            <div style="height: 12px;"></div>
-            <div id="ai-response" class="list-card">
-              <div class="list-title">回复</div>
-              <div id="ai-response-text" class="list-desc">输入问题后点击“开始分析”。</div>
+            <div id="ai-response" class="list-card" style="margin-top:14px;">
+              <div class="list-title">💬 回复</div>
+              <div id="ai-response-text" class="list-desc">输入问题后点击「开始分析」。</div>
             </div>
           </div>
         </section>
 
+        <!-- MINE -->
         <section class="page" data-page="mine">
           <div class="panel">
             <div class="panel-title">我的信息</div>
@@ -158,28 +165,41 @@
           </div>
 
           <div class="panel">
-            <div class="panel-title">我的审批进度</div>
+            <div class="panel-title">审批进度</div>
             <div id="my-approval-timeline" class="list-stack"></div>
           </div>
 
-          <div class="panel" id="teacher-approvals-panel" style="display: none;">
+          <div class="panel" id="teacher-approvals-panel" style="display:none;">
             <div class="panel-title">待处理审批</div>
-            <div id="teacher-approvals-tip" class="list-desc" style="margin-bottom: 10px;">
-              仅实验室管理员/老师可处理。
-            </div>
+            <div id="teacher-approvals-tip" class="list-desc" style="margin-bottom:10px;">仅实验室管理员 / 老师可处理。</div>
             <div id="teacher-approvals-list" class="list-stack"></div>
           </div>
         </section>
       </main>
 
-      <section id="global-toast" class="toast hidden"></section>
+      <div id="global-toast" class="toast hidden"></div>
 
       <nav class="tabbar">
-        <button class="tab-item active" data-page="home">首页</button>
-        <button class="tab-item" data-page="borrow">设备借用</button>
-        <button class="tab-item" data-page="assistant">AI</button>
-        <button class="tab-item" data-page="apply">耗材申领</button>
-        <button class="tab-item" data-page="mine">我的</button>
+        <button class="tab-item active" data-page="home">
+          <span class="tab-icon">🏠</span>
+          首页
+        </button>
+        <button class="tab-item" data-page="borrow">
+          <span class="tab-icon">🔬</span>
+          设备
+        </button>
+        <button class="tab-item" data-page="assistant">
+          <span class="tab-icon">🤖</span>
+          AI
+        </button>
+        <button class="tab-item" data-page="apply">
+          <span class="tab-icon">🧪</span>
+          耗材
+        </button>
+        <button class="tab-item" data-page="mine">
+          <span class="tab-icon">👤</span>
+          我的
+        </button>
       </nav>
     </div>
 
