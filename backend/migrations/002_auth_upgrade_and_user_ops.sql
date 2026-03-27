@@ -72,6 +72,33 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+UPDATE users SET
+  account = CASE id
+    WHEN 1 THEN 'admin'
+    WHEN 2 THEN 'teacher.li'
+    WHEN 3 THEN 'student.wang'
+    ELSE CONCAT('user.', id)
+  END,
+  password = CASE id
+    WHEN 1 THEN 'admin123'
+    WHEN 2 THEN 'teacher123'
+    WHEN 3 THEN 'student123'
+    ELSE CONCAT('pass', id)
+  END,
+  sso_provider = CASE
+    WHEN sso_provider = '' THEN 'feishu'
+    ELSE sso_provider
+  END,
+  sso_subject = CASE id
+    WHEN 1 THEN 'admin@lab.local'
+    WHEN 2 THEN 'teacher.li@lab.local'
+    WHEN 3 THEN 'student.wang@lab.local'
+    ELSE CONCAT('user', id, '@lab.local')
+  END,
+  enabled = 1,
+  role_updated_at = COALESCE(role_updated_at, NOW())
+WHERE account = '' OR password = '' OR sso_provider = '' OR sso_subject = '' OR role_updated_at IS NULL;
+
 SET @sql := IF(
   EXISTS(
     SELECT 1 FROM information_schema.STATISTICS
@@ -119,30 +146,6 @@ CREATE TABLE IF NOT EXISTS operation_logs (
   INDEX idx_operation_logs_type (type),
   INDEX idx_operation_logs_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-UPDATE users SET
-  account = CASE id
-    WHEN 1 THEN 'admin'
-    WHEN 2 THEN 'teacher.li'
-    WHEN 3 THEN 'student.wang'
-    ELSE CONCAT('user.', id)
-  END,
-  password = CASE id
-    WHEN 1 THEN 'admin123'
-    WHEN 2 THEN 'teacher123'
-    WHEN 3 THEN 'student123'
-    ELSE CONCAT('pass', id)
-  END,
-  sso_provider = 'feishu',
-  sso_subject = CASE id
-    WHEN 1 THEN 'admin@lab.local'
-    WHEN 2 THEN 'teacher.li@lab.local'
-    WHEN 3 THEN 'student.wang@lab.local'
-    ELSE CONCAT('user', id, '@lab.local')
-  END,
-  enabled = 1,
-  role_updated_at = COALESCE(role_updated_at, NOW())
-WHERE account = '' OR password = '' OR sso_provider = '' OR sso_subject = '' OR role_updated_at IS NULL;
 
 INSERT INTO operation_logs (
   type, target_user_id, target_user_name,
