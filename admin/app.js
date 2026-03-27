@@ -1901,16 +1901,5 @@ function initLoginScreen() {
 bindEvents();
 initLoginScreen();
 
-// 已有 token 则直接进主界面，否则显示登录屏
-if (state.auth.accessToken) {
-  const mainApp = document.getElementById("main-app");
-  const loginScreen = document.getElementById("login-screen");
-  if (mainApp) mainApp.style.display = "flex";
-  if (loginScreen) loginScreen.style.display = "none";
-  loadAll().catch(() => {
-    // token 失效则回到登录屏
-    showLoginScreen();
-  });
-} else {
-  showLoginScreen();
-}
+// 总是显示登录屏
+showLoginScreen();
