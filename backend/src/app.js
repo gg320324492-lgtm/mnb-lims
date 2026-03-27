@@ -1857,10 +1857,19 @@ app.post("/api/devices/:id/qr", (req, res) => {
   return ok(res, device, "设备二维码已更新");
 });
 
-app.post("/api/devices", requireRoles(["teacher", "admin"]), (req, res) => {
+app.post("/api/devices", requireAuth, async (req, res) => {
   const payload = req.body || {};
   if (!payload.name) {
     return badRequest(res, "设备名称不能为空");
+  }
+
+  if (mysqlStore.useMySql) {
+    try {
+      const record = await mysqlStore.createDevice(payload);
+      return res.status(201).json({ code: 0, message: "设备创建成功", data: record });
+    } catch (err) {
+      return badRequest(res, `数据库操作失败：${err.message}`);
+    }
   }
 
   const record = {

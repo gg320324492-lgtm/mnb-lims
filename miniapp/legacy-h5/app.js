@@ -632,6 +632,30 @@ function bindEvents() {
     showToast('已切换当前用户，登录态与页面状态已重置');
   });
 
+  document.getElementById('device-create-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await ensureLogin();
+      const name = document.getElementById('device-create-name').value.trim();
+      const code = document.getElementById('device-create-code').value.trim();
+      const category = document.getElementById('device-create-category').value.trim();
+      if (!name) { showToast('请输入设备名称'); return; }
+      const res = await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.auth.accessToken}`, 'X-Client-Source': 'legacy-h5' },
+        body: JSON.stringify({ name, code: code || undefined, category: category || undefined, status: 'available' })
+      });
+      const json = await res.json();
+      if (!res.ok || json.code !== 0) throw new Error(json.message || '新增设备失败');
+      document.getElementById('device-create-form').reset();
+      await refreshData(true);
+      renderAll();
+      showToast(`设备「${name}」已添加成功`);
+    } catch (err) {
+      showToast(err.message || '新增设备失败', 2200);
+    }
+  });
+
   document.getElementById('borrow-form').addEventListener('submit', async (event) => {
     try {
       await handleBorrowSubmit(event);

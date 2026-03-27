@@ -103,6 +103,24 @@ async function getDevices() {
   return query('SELECT id, name, code, category, status, lab_id AS labId, qr_token AS qrToken, qr_enabled AS qrEnabled FROM devices ORDER BY id ASC');
 }
 
+async function createDevice(payload) {
+  const qrToken = `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const code = payload.code || `DEV-${Date.now()}`;
+  const [result] = await query(
+    `INSERT INTO devices (name, code, category, status, lab_id, qr_token, qr_enabled) VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    [
+      String(payload.name || '').trim(),
+      code,
+      String(payload.category || '未分类').trim(),
+      String(payload.status || 'available'),
+      payload.labId || null,
+      qrToken
+    ]
+  );
+  const [rows] = await query('SELECT id, name, code, category, status, lab_id AS labId, qr_token AS qrToken, qr_enabled AS qrEnabled FROM devices WHERE id = ?', [result.insertId]);
+  return rows;
+}
+
 async function getConsumables(warehouseId = 1) {
   return query(
     `SELECT c.id, c.name, c.category, c.unit, c.photo_data_url AS photoDataUrl, c.qr_token AS qrToken, c.qr_enabled AS qrEnabled,
@@ -608,6 +626,7 @@ module.exports = {
   getWarehouses,
   getDashboardStats,
   getDevices,
+  createDevice,
   getConsumables,
   getBorrows,
   getBorrowById,
