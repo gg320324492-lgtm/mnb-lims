@@ -135,6 +135,53 @@
           </div>
 
           <div class="panel">
+            <div class="panel-title">新增耗材</div>
+            <form id="consumable-create-form" class="form-stack">
+              <label>
+                <span>耗材名称</span>
+                <input id="consumable-create-name" type="text" placeholder="例如：一次性手套" required />
+              </label>
+              <label>
+                <span>分类</span>
+                <input id="consumable-create-category" type="text" placeholder="例如：防护用品" />
+              </label>
+              <label>
+                <span>单位</span>
+                <select id="consumable-create-unit">
+                  <option value="个">个</option>
+                  <option value="盒">盒</option>
+                  <option value="包">包</option>
+                  <option value="瓶">瓶</option>
+                  <option value="袋">袋</option>
+                  <option value="卷">卷</option>
+                  <option value="套">套</option>
+                  <option value="片">片</option>
+                  <option value="根">根</option>
+                  <option value="升">L（升）</option>
+                  <option value="毫升">mL（毫升）</option>
+                  <option value="克">g（克）</option>
+                  <option value="千克">kg（千克）</option>
+                </select>
+              </label>
+              <label>
+                <span>初始库存数量</span>
+                <input id="consumable-create-stock" type="number" min="0" value="0" />
+              </label>
+              <label>
+                <span>安全库存（低于此值预警）</span>
+                <input id="consumable-create-safe-stock" type="number" min="0" value="0" />
+              </label>
+              <button type="submit" class="primary-btn">➕ 添加耗材</button>
+            </form>
+            <div id="consumable-qr-result" class="hidden" style="margin-top:16px;text-align:center;">
+              <div class="list-title" style="margin-bottom:10px;">📱 耗材二维码</div>
+              <img id="consumable-qr-img" src="" alt="二维码" style="width:180px;height:180px;border-radius:12px;border:1px solid var(--border);background:#fff;" />
+              <div id="consumable-qr-name" class="list-desc" style="margin-top:8px;"></div>
+              <button id="consumable-qr-print-btn" type="button" class="primary-btn" style="margin-top:12px;width:100%;">🖨️ 打印二维码</button>
+            </div>
+          </div>
+
+          <div class="panel">
             <div class="panel-title">耗材库存</div>
             <div id="consumable-cards" class="list-stack"></div>
           </div>

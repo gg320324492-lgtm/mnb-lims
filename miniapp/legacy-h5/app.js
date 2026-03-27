@@ -688,6 +688,55 @@ function bindEvents() {
     }
   });
 
+  document.getElementById('consumable-create-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await ensureLogin();
+      const name = document.getElementById('consumable-create-name').value.trim();
+      const category = document.getElementById('consumable-create-category').value.trim();
+      const unit = document.getElementById('consumable-create-unit').value;
+      const stock = Number(document.getElementById('consumable-create-stock').value || 0);
+      const safeStock = Number(document.getElementById('consumable-create-safe-stock').value || 0);
+      if (!name) { showToast('请输入耗材名称'); return; }
+      const res = await fetch('/api/consumables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.auth.accessToken}`, 'X-Client-Source': 'legacy-h5' },
+        body: JSON.stringify({ name, category: category || undefined, unit, stock, safeStock, warehouseId: state.selectedWarehouseId || 1 })
+      });
+      const json = await res.json();
+      if (!res.ok || json.code !== 0) throw new Error(json.message || '新增耗材失败');
+      document.getElementById('consumable-create-form').reset();
+      await refreshData(true);
+      renderAll();
+      showToast(`耗材「${name}」已添加成功`);
+      // 显示二维码
+      const consumableId = json.data && json.data.id;
+      if (consumableId) {
+        const qrResult = document.getElementById('consumable-qr-result');
+        const qrImg = document.getElementById('consumable-qr-img');
+        const qrName = document.getElementById('consumable-qr-name');
+        try {
+          const qrRes = await fetch(`/api/consumables/${consumableId}/qr/export?format=image`, {
+            headers: { 'Authorization': `Bearer ${state.auth.accessToken}` }
+          });
+          if (qrRes.ok) {
+            const blob = await qrRes.blob();
+            qrImg.src = URL.createObjectURL(blob);
+          }
+        } catch (_) {}
+        qrName.textContent = `${name} · ${unit}`;
+        qrResult.classList.remove('hidden');
+        document.getElementById('consumable-qr-print-btn').onclick = () => {
+          const win = window.open('', '_blank');
+          win.document.write(`<html><head><title>打印二维码 - ${name}</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;}img{width:220px;height:220px;}p{margin-top:12px;font-size:16px;font-weight:bold;text-align:center;}</style></head><body><img src="${qrImg.src}" /><p>${name} · ${unit}</p><script>window.onload=()=>window.print()</script></body></html>`);
+          win.document.close();
+        };
+      }
+    } catch (err) {
+      showToast(err.message || '新增耗材失败', 2200);
+    }
+  });
+
   document.getElementById('apply-form').addEventListener('submit', async (event) => {
     try {
       await handleApplySubmit(event);

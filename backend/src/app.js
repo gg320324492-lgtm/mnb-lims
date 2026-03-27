@@ -1927,7 +1927,18 @@ app.get("/api/consumables", async (req, res) => {
 });
 
 app.get("/api/consumables/:id/qr/export", async (req, res) => {
-  const consumable = db.consumables.find((item) => item.id === Number(req.params.id));
+  let consumable;
+  if (mysqlStore.useMySql) {
+    try {
+      const list = await mysqlStore.getConsumables(1);
+      consumable = list.find((item) => item.id === Number(req.params.id));
+    } catch (err) {
+      return badRequest(res, `数据库查询失败：${err.message}`);
+    }
+  } else {
+    consumable = db.consumables.find((item) => item.id === Number(req.params.id));
+  }
+
   if (!consumable) {
     return notFound(res, "耗材不存在");
   }
@@ -1938,9 +1949,15 @@ app.get("/api/consumables/:id/qr/export", async (req, res) => {
 
   const format = String(req.query.format || "pdf").toLowerCase();
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : 1;
-  const stock = db.consumableStocks.find(
-    (s) => Number(s.warehouseId) === Number(warehouseId) && Number(s.consumableId) === Number(consumable.id)
-  );
+  let stockVal = 0;
+  if (!mysqlStore.useMySql) {
+    const stock = db.consumableStocks.find(
+      (s) => Number(s.warehouseId) === Number(warehouseId) && Number(s.consumableId) === Number(consumable.id)
+    );
+    stockVal = stock ? Number(stock.stock) : 0;
+  } else {
+    stockVal = Number(consumable.stock || 0);
+  }
   const scanUrl = buildQrLandingUrl(req, "consumable", consumable.qrToken);
 
   try {
@@ -1950,13 +1967,13 @@ app.get("/api/consumables/:id/qr/export", async (req, res) => {
       const filename = `consumable-qr-${consumable.id}.png`;
       const pngBuffer = Buffer.from(String(qrDataUrl).replace(/^data:image\/png;base64,/, ""), "base64");
       res.setHeader("Content-Type", "image/png");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
       return res.send(pngBuffer);
     }
 
     const pdfBuffer = await createQrPdfBuffer({
       title: "耗材二维码",
-      subtitle: `${consumable.name || "耗材"} / 库存 ${stock ? Number(stock.stock) : 0}${consumable.unit || ""}`,
+      subtitle: `${consumable.name || "耗材"} / 库存 ${stockVal}${consumable.unit || ""}`,
       qrDataUrl,
       scanUrl
     });
@@ -2021,12 +2038,20 @@ app.post("/api/consumables/:id/qr", (req, res) => {
   return ok(res, consumable, "耗材二维码已更新");
 });
 
-app.post("/api/consumables", (req, res) => {
+app.post("/api/consumables", requireAuth, async (req, res) => {
   const payload = req.body || {};
   if (!payload.name) {
     return badRequest(res, "耗材名称不能为空");
   }
 
+  if (mysqlStore.useMySql) {
+    try {
+      const record = await mysqlStore.createConsumable(payload);
+      return res.status(201).json({ code: 0, message: "耗材创建成功", data: record });
+    } catch (err) {
+      return badRequest(res, `数据库操作失败：${err.message}`);
+    }
+  }
   const record = {
     id: db.nextId(db.consumables),
     name: payload.name,
