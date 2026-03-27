@@ -340,7 +340,25 @@ async function refreshAdminToken() {
     if (notices.length > 0) {
       renderUserOpNotices(notices, true);
     }
-    throw new Error(json.message || "刷新登录态失败");
+    const hasRoleChanged = notices.some((n) => n && n.type === 'ROLE_CHANGED');
+    const hasDisabled = notices.some((n) => n && n.type === 'ACCOUNT_DISABLED');
+    if (hasRoleChanged) {
+      setMessage('角色已变更，请重新登录', true);
+      state.auth.accessToken = '';
+      state.auth.refreshToken = '';
+      state.auth.user = null;
+      renderAuthSummary();
+      throw new Error('角色已变更，请重新登录');
+    }
+    if (hasDisabled) {
+      setMessage('账号已禁用，请联系管理员', true);
+      state.auth.accessToken = '';
+      state.auth.refreshToken = '';
+      state.auth.user = null;
+      renderAuthSummary();
+      throw new Error('账号已禁用');
+    }
+    throw new Error(json.message || '刷新登录态失败');
   }
 
   setAuthFromPayload(json.data);
