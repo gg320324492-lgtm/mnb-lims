@@ -139,8 +139,13 @@ async function run() {
     await setUserRole(baseUrl, adminAuth.accessToken, 2, 'student');
     teacherRoleChanged = true;
 
+    const roleChangedRefreshPromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/auth/refresh') && resp.request().method() === 'POST',
+      { timeout: 5000 }
+    );
     await page.click('#refresh-btn');
-    await page.waitForTimeout(800);
+    await roleChangedRefreshPromise;
+    await page.waitForTimeout(400);
     const roleChangedMsg = await page.locator('#global-message').innerText();
     if (!/角色已变更|重新登录/.test(String(roleChangedMsg))) {
       throw new Error('role-changed scenario not handled in browser flow');
@@ -159,8 +164,13 @@ async function run() {
     await setUserEnabled(baseUrl, adminAuth.accessToken, 2, false);
     teacherDisabled = true;
 
+    const disabledRefreshPromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/auth/refresh') && resp.request().method() === 'POST',
+      { timeout: 5000 }
+    );
     await page.click('#refresh-btn');
-    await page.waitForTimeout(800);
+    await disabledRefreshPromise;
+    await page.waitForTimeout(400);
     const disabledMsg = await page.locator('#global-message').innerText();
     if (!/禁用/.test(String(disabledMsg))) {
       throw new Error('account-disabled scenario not handled in browser flow');
