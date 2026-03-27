@@ -651,6 +651,30 @@ function bindEvents() {
       await refreshData(true);
       renderAll();
       showToast(`设备「${name}」已添加成功`);
+      // 显示二维码
+      const deviceId = json.data && json.data.id;
+      if (deviceId) {
+        const qrResult = document.getElementById('device-qr-result');
+        const qrImg = document.getElementById('device-qr-img');
+        const qrName = document.getElementById('device-qr-name');
+        // 用 fetch+blob 显示二维码图片
+        try {
+          const qrRes = await fetch(`/api/devices/${deviceId}/qr/export?format=image`, {
+            headers: { 'Authorization': `Bearer ${state.auth.accessToken}` }
+          });
+          if (qrRes.ok) {
+            const blob = await qrRes.blob();
+            qrImg.src = URL.createObjectURL(blob);
+          }
+        } catch (_) {}
+        qrName.textContent = `${name}${code ? ' · ' + code : ''}`;
+        qrResult.classList.remove('hidden');
+        document.getElementById('device-qr-print-btn').onclick = () => {
+          const win = window.open('', '_blank');
+          win.document.write(`<html><head><title>打印二维码 - ${name}</title><style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;}img{width:220px;height:220px;}p{margin-top:12px;font-size:16px;font-weight:bold;text-align:center;}</style></head><body><img src="${qrImg.src}" /><p>${name}${code ? ' · ' + code : ''}</p><script>window.onload=()=>window.print()</script></body></html>`);
+          win.document.close();
+        };
+      }
     } catch (err) {
       showToast(err.message || '新增设备失败', 2200);
     }

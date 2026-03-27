@@ -52,25 +52,6 @@
         <!-- BORROW -->
         <section class="page" data-page="borrow">
           <div class="panel">
-            <div class="panel-title">新增设备</div>
-            <form id="device-create-form" class="form-stack">
-              <label>
-                <span>设备名称</span>
-                <input id="device-create-name" type="text" placeholder="例如：示波器" required />
-              </label>
-              <label>
-                <span>设备编号</span>
-                <input id="device-create-code" type="text" placeholder="例如：DEV-1001（可留空自动生成）" />
-              </label>
-              <label>
-                <span>分类</span>
-                <input id="device-create-category" type="text" placeholder="例如：电子仪器" />
-              </label>
-              <button type="submit" class="primary-btn">➕ 添加设备</button>
-            </form>
-          </div>
-
-          <div class="panel">
             <div class="panel-title">设备借用申请</div>
             <form id="borrow-form" class="form-stack">
               <label>
@@ -95,6 +76,31 @@
               </label>
               <button type="submit" class="primary-btn">提交借用申请</button>
             </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">新增设备</div>
+            <form id="device-create-form" class="form-stack">
+              <label>
+                <span>设备名称</span>
+                <input id="device-create-name" type="text" placeholder="例如：示波器" required />
+              </label>
+              <label>
+                <span>设备编号</span>
+                <input id="device-create-code" type="text" placeholder="例如：DEV-1001（可留空自动生成）" />
+              </label>
+              <label>
+                <span>分类</span>
+                <input id="device-create-category" type="text" placeholder="例如：电子仪器" />
+              </label>
+              <button type="submit" class="primary-btn">➕ 添加设备</button>
+            </form>
+            <div id="device-qr-result" class="hidden" style="margin-top:16px;text-align:center;">
+              <div class="list-title" style="margin-bottom:10px;">📱 设备二维码</div>
+              <img id="device-qr-img" src="" alt="二维码" style="width:180px;height:180px;border-radius:12px;border:1px solid var(--border);background:#fff;" />
+              <div id="device-qr-name" class="list-desc" style="margin-top:8px;"></div>
+              <button id="device-qr-print-btn" type="button" class="primary-btn" style="margin-top:12px;width:100%;">🖨️ 打印二维码</button>
+            </div>
           </div>
 
           <div class="panel">

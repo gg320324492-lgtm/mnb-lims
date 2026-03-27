@@ -1793,7 +1793,18 @@ app.get("/api/devices", async (req, res) => {
 });
 
 app.get("/api/devices/:id/qr/export", async (req, res) => {
-  const device = db.devices.find((item) => item.id === Number(req.params.id));
+  let device;
+  if (mysqlStore.useMySql) {
+    try {
+      const devices = await mysqlStore.getDevices();
+      device = devices.find((item) => item.id === Number(req.params.id));
+    } catch (err) {
+      return badRequest(res, `数据库查询失败：${err.message}`);
+    }
+  } else {
+    device = db.devices.find((item) => item.id === Number(req.params.id));
+  }
+
   if (!device) {
     return notFound(res, "设备不存在");
   }
@@ -1812,7 +1823,7 @@ app.get("/api/devices/:id/qr/export", async (req, res) => {
       const filename = `device-qr-${device.id}.png`;
       const pngBuffer = Buffer.from(String(qrDataUrl).replace(/^data:image\/png;base64,/, ""), "base64");
       res.setHeader("Content-Type", "image/png");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
       return res.send(pngBuffer);
     }
 
