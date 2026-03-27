@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
 
+// Load .env from backend directory so migrations work when called via npm run
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
 function splitSqlStatements(sqlText) {
   const statements = [];
   let current = '';
