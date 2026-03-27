@@ -1627,4 +1627,3 @@ function bindEvents() {
 }
 
 bindEvents();
-loadAll();
