@@ -1,13 +1,100 @@
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS account VARCHAR(64) NOT NULL DEFAULT '' AFTER name,
-  ADD COLUMN IF NOT EXISTS password VARCHAR(255) NOT NULL DEFAULT '' AFTER account,
-  ADD COLUMN IF NOT EXISTS sso_provider VARCHAR(64) NOT NULL DEFAULT '' AFTER password,
-  ADD COLUMN IF NOT EXISTS sso_subject VARCHAR(128) NOT NULL DEFAULT '' AFTER sso_provider,
-  ADD COLUMN IF NOT EXISTS enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER role,
-  ADD COLUMN IF NOT EXISTS role_updated_at DATETIME NULL AFTER enabled;
+SET @db_name := DATABASE();
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_users_account ON users (account);
-CREATE INDEX IF NOT EXISTS idx_users_sso ON users (sso_provider, sso_subject);
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND COLUMN_NAME = 'account'
+  ),
+  'SELECT 1',
+  "ALTER TABLE users ADD COLUMN account VARCHAR(64) NOT NULL DEFAULT '' AFTER name"
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password'
+  ),
+  'SELECT 1',
+  "ALTER TABLE users ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT '' AFTER account"
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND COLUMN_NAME = 'sso_provider'
+  ),
+  'SELECT 1',
+  "ALTER TABLE users ADD COLUMN sso_provider VARCHAR(64) NOT NULL DEFAULT '' AFTER password"
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND COLUMN_NAME = 'sso_subject'
+  ),
+  'SELECT 1',
+  "ALTER TABLE users ADD COLUMN sso_subject VARCHAR(128) NOT NULL DEFAULT '' AFTER sso_provider"
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND COLUMN_NAME = 'enabled'
+  ),
+  'SELECT 1',
+  "ALTER TABLE users ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER role"
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role_updated_at'
+  ),
+  'SELECT 1',
+  "ALTER TABLE users ADD COLUMN role_updated_at DATETIME NULL AFTER enabled"
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND INDEX_NAME = 'uk_users_account'
+  ),
+  'SELECT 1',
+  'CREATE UNIQUE INDEX uk_users_account ON users (account)'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'users' AND INDEX_NAME = 'idx_users_sso'
+  ),
+  'SELECT 1',
+  'CREATE INDEX idx_users_sso ON users (sso_provider, sso_subject)'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS operation_logs (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
