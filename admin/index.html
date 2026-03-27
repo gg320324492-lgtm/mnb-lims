@@ -25,6 +25,7 @@
           <button class="menu-item" data-section="borrows">借用记录</button>
           <button class="menu-item" data-section="applications">申领记录</button>
           <button class="menu-item" data-section="qrLogs">扫码日志</button>
+          <button class="menu-item" data-section="userOps">用户与权限</button>
         </nav>
       </aside>
 
@@ -34,7 +35,17 @@
             <h2 id="page-title">数据概览</h2>
             <p id="page-desc">查看当前待审批、台账和记录概况</p>
           </div>
-          <div class="topbar-actions">
+          <div class="topbar-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <span id="auth-summary" class="muted">未登录</span>
+            <select id="auth-login-type" style="width:120px;">
+              <option value="password">账号密码</option>
+              <option value="sso">SSO</option>
+            </select>
+            <input id="auth-account" type="text" placeholder="账号（如 admin）" style="width:170px;" />
+            <input id="auth-password" type="password" placeholder="密码" style="width:140px;" />
+            <input id="auth-sso-provider" type="text" placeholder="SSO 提供方（如 feishu）" style="width:170px;" />
+            <input id="auth-sso-subject" type="text" placeholder="SSO 标识（如 admin@lab.local）" style="width:220px;" />
+            <button id="auth-login-btn" class="action-btn">登录</button>
             <button id="refresh-btn" class="primary-btn">刷新数据</button>
           </div>
         </header>
@@ -282,39 +293,21 @@
           </div>
         </section>
 
-        <section class="section" data-name="qrLogs">
+        <section class="section" data-name="userOps">
           <div class="panel">
             <div class="panel-header">
-              <h3>扫码日志</h3>
-              <p>记录每次二维码扫描行为（设备/耗材）</p>
+              <h3>用户与权限</h3>
+              <p>支持账号禁用、角色变更与操作日志审计</p>
             </div>
             <div class="panel-body">
-              <div class="form-stack" style="margin-bottom: 12px;">
-                <label>
-                  <span>类型筛选</span>
-                  <select id="qr-log-type-filter">
-                    <option value="">全部</option>
-                    <option value="device">设备</option>
-                    <option value="consumable">耗材</option>
-                  </select>
-                </label>
-                <label>
-                  <span>对象ID</span>
-                  <input id="qr-log-entity-id-filter" type="number" min="1" placeholder="可选" />
-                </label>
-                <div class="action-group">
-                  <button id="qr-log-filter-btn" type="button" class="primary-btn">筛选</button>
-                  <button id="qr-log-reset-btn" type="button" class="action-btn">重置</button>
-                  <button id="qr-log-export-btn" type="button" class="action-btn approve">导出 CSV</button>
-                </div>
-                <div id="qr-log-filter-summary" class="muted"></div>
+              <div id="user-op-notices" class="message hidden"></div>
+              <div style="margin-bottom: 12px;" class="action-group">
+                <button id="users-refresh-btn" type="button" class="primary-btn">刷新用户列表</button>
+                <button id="logs-refresh-btn" type="button" class="action-btn">刷新操作日志</button>
               </div>
-              <div id="qr-logs-table"></div>
-              <div class="action-group" style="margin-top: 10px; align-items: center;">
-                <button id="qr-log-prev-btn" type="button" class="action-btn">上一页</button>
-                <span id="qr-log-page-info" class="muted">第 1 / 1 页</span>
-                <button id="qr-log-next-btn" type="button" class="action-btn">下一页</button>
-              </div>
+              <div id="users-table"></div>
+              <div style="height: 16px;"></div>
+              <div id="operation-logs-table"></div>
             </div>
           </div>
         </section>

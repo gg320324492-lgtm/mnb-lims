@@ -119,11 +119,9 @@ Page({
       return;
     }
 
-    const app = getApp();
     try {
       await request('/api/borrows', 'POST', {
         deviceId: selected.id,
-        userId: app.globalData.currentUserId,
         purpose,
         borrowDate,
         expectedReturnDate,

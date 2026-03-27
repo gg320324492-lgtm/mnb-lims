@@ -25,7 +25,13 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '300M',
+      min_uptime: '10s',
+      max_restarts: 10,
+      restart_delay: 2000,
       env_file: '.env',
+      log_type: 'json',
+      merge_logs: true,
+      time: true,
       env: {
         ...envByMode[deployEnv],
         DEPLOY_ENV: deployEnv

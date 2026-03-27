@@ -7,7 +7,9 @@ REPO_URL="${REPO_URL:-}"                # 首次部署建议传入，例如 git@
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 PM2_APP_NAME="${PM2_APP_NAME:-lab-miniapp-backend}"
 BACKEND_PORT="${BACKEND_PORT:-3000}"
-DOMAIN="${DOMAIN:-_}"                    # 例如 lab-api.example.com，默认 _ 表示兜底 server
+DOMAIN="${DOMAIN:-_}"                    # 例如 api.example.com
+SSL_CERT_PATH="${SSL_CERT_PATH:-/etc/letsencrypt/live/$DOMAIN/fullchain.pem}"
+SSL_KEY_PATH="${SSL_KEY_PATH:-/etc/letsencrypt/live/$DOMAIN/privkey.pem}"
 
 # MySQL 连接（写入 backend/.env）
 USE_MYSQL="${USE_MYSQL:-true}"
@@ -91,11 +93,20 @@ else
 fi
 pm2 save
 
-# 6) Nginx 反向代理配置
+# 6) Nginx 反向代理配置（HTTPS + HTTP 强制跳转）
 cat > "$NGINX_SITE_FILE" <<EOF
 server {
   listen 80;
   server_name $DOMAIN;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name $DOMAIN;
+
+  ssl_certificate $SSL_CERT_PATH;
+  ssl_certificate_key $SSL_KEY_PATH;
 
   client_max_body_size 20m;
 

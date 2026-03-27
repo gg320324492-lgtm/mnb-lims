@@ -4,6 +4,7 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/srv/lab-miniapp-mvp-staging}"
 TARGET_TAG="${1:-deploy-ok-2026-03-26}"
 PM2_APP_NAME="${PM2_APP_NAME:-lab-miniapp-backend-staging}"
+DEPLOY_ENV="${DEPLOY_ENV:-staging}"
 BACKEND_DIR="$APP_ROOT/backend"
 
 if [ ! -d "$APP_ROOT/.git" ]; then
@@ -21,8 +22,9 @@ git checkout "$TARGET_TAG"
 
 cd "$BACKEND_DIR"
 
-if [ -f "$BACKEND_DIR/.env.staging" ]; then
-  cp "$BACKEND_DIR/.env.staging" "$BACKEND_DIR/.env"
+ENV_FILE="$BACKEND_DIR/.env.$DEPLOY_ENV"
+if [ -f "$ENV_FILE" ]; then
+  cp "$ENV_FILE" "$BACKEND_DIR/.env"
 fi
 
 echo "[rollback] install backend deps"

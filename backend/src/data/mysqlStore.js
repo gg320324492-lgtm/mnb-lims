@@ -33,7 +33,48 @@ async function query(sql, params = []) {
 }
 
 async function getUsers() {
-  return query('SELECT id, name, role, phone FROM users ORDER BY id ASC');
+  return query(
+    `SELECT id, name, account, sso_provider AS ssoProvider, sso_subject AS ssoSubject,
+            role, enabled, role_updated_at AS roleUpdatedAt, phone
+     FROM users
+     ORDER BY id ASC`
+  );
+}
+
+async function getUserById(id) {
+  const rows = await query(
+    `SELECT id, name, account, sso_provider AS ssoProvider, sso_subject AS ssoSubject,
+            role, enabled, role_updated_at AS roleUpdatedAt, phone
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [Number(id)]
+  );
+  return rows[0] || null;
+}
+
+async function getUserByAccount(account) {
+  const rows = await query(
+    `SELECT id, name, account, password, sso_provider AS ssoProvider, sso_subject AS ssoSubject,
+            role, enabled, role_updated_at AS roleUpdatedAt, phone
+     FROM users
+     WHERE account = ?
+     LIMIT 1`,
+    [String(account || '').trim()]
+  );
+  return rows[0] || null;
+}
+
+async function getUserBySso(ssoProvider, ssoSubject) {
+  const rows = await query(
+    `SELECT id, name, account, sso_provider AS ssoProvider, sso_subject AS ssoSubject,
+            role, enabled, role_updated_at AS roleUpdatedAt, phone
+     FROM users
+     WHERE sso_provider = ? AND sso_subject = ?
+     LIMIT 1`,
+    [String(ssoProvider || '').trim(), String(ssoSubject || '').trim()]
+  );
+  return rows[0] || null;
 }
 
 async function getWarehouses() {
@@ -228,6 +269,89 @@ async function getApprovals(filters = {}) {
      ORDER BY a.id DESC`,
     params
   );
+}
+
+async function createOperationLog(payload) {
+  const result = await query(
+    `INSERT INTO operation_logs (
+      type, target_user_id, target_user_name, before_role, after_role,
+      before_enabled, after_enabled, message,
+      operator_id, operator_name, operator_role,
+      request_id, trace_id, source, ip, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      String(payload.type || ''),
+      payload.targetUserId ? Number(payload.targetUserId) : null,
+      String(payload.targetUserName || ''),
+      payload.beforeRole || null,
+      payload.afterRole || null,
+      typeof payload.beforeEnabled === 'boolean' ? (payload.beforeEnabled ? 1 : 0) : null,
+      typeof payload.afterEnabled === 'boolean' ? (payload.afterEnabled ? 1 : 0) : null,
+      String(payload.message || ''),
+      payload.audit ? Number(payload.audit.operatorId || 0) : null,
+      String(payload.operatorName || ''),
+      payload.audit ? String(payload.audit.operatorRole || '') : '',
+      payload.audit ? String(payload.audit.requestId || '') : '',
+      payload.audit ? String(payload.audit.traceId || '') : '',
+      payload.audit ? String(payload.audit.source || '') : '',
+      payload.audit ? String(payload.audit.ip || '') : ''
+    ]
+  );
+
+  const id = Number(result.insertId);
+  const rows = await query(
+    `SELECT id, type, target_user_id AS targetUserId, target_user_name AS targetUserName,
+            before_role AS beforeRole, after_role AS afterRole,
+            before_enabled AS beforeEnabled, after_enabled AS afterEnabled,
+            message, operator_id AS operatorId, operator_name AS operatorName,
+            operator_role AS operatorRole, request_id AS requestId, trace_id AS traceId,
+            source, ip, created_at AS createdAt
+     FROM operation_logs
+     WHERE id = ?
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function getOperationLogs() {
+  return query(
+    `SELECT id, type, target_user_id AS targetUserId, target_user_name AS targetUserName,
+            before_role AS beforeRole, after_role AS afterRole,
+            before_enabled AS beforeEnabled, after_enabled AS afterEnabled,
+            message, operator_id AS operatorId, operator_name AS operatorName,
+            operator_role AS operatorRole, request_id AS requestId, trace_id AS traceId,
+            source, ip, created_at AS createdAt
+     FROM operation_logs
+     ORDER BY id DESC`
+  );
+}
+
+async function updateUserById(id, payload = {}) {
+  const updates = [];
+  const params = [];
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) {
+    updates.push('enabled = ?');
+    params.push(payload.enabled ? 1 : 0);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'role')) {
+    updates.push('role = ?');
+    params.push(String(payload.role));
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'roleUpdatedAt')) {
+    updates.push('role_updated_at = ?');
+    params.push(payload.roleUpdatedAt ? new Date(payload.roleUpdatedAt) : null);
+  }
+
+  if (updates.length === 0) {
+    return getUserById(id);
+  }
+
+  params.push(Number(id));
+  await query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+
+  return getUserById(id);
 }
 
 function getPoolRequired() {
@@ -468,6 +592,12 @@ function toApprovalView(row) {
 module.exports = {
   useMySql,
   getUsers,
+  getUserById,
+  getUserByAccount,
+  getUserBySso,
+  updateUserById,
+  createOperationLog,
+  getOperationLogs,
   getWarehouses,
   getDashboardStats,
   getDevices,

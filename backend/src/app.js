@@ -1,7 +1,13 @@
+require("dotenv").config();
+
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
+const helmet = require("helmet");
+const { rateLimit } = require("express-rate-limit");
+const jwt = require("jsonwebtoken");
 const QRCode = require("qrcode");
 const PDFDocument = require("pdfkit");
 const db = require("./data/mockDb");
@@ -17,11 +23,567 @@ const corsOrigins = String(process.env.CORS_ORIGINS || "")
   .map((item) => item.trim())
   .filter(Boolean);
 
-app.use(corsOrigins.length ? cors({ origin: corsOrigins }) : cors());
+const isProdLike = ["production", "staging"].includes(String(process.env.NODE_ENV || "").toLowerCase());
+const corsAllowAll = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
+const useStrictCors = isProdLike && !corsAllowAll;
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (corsAllowAll) {
+      callback(null, true);
+      return;
+    }
+
+    // 非浏览器请求（如 curl / 健康探针）默认放行
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (corsOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error("CORS origin not allowed"));
+  }
+};
+
+app.use((req, res, next) => {
+  req.requestId = String(req.headers["x-request-id"] || crypto.randomUUID());
+  const traceHeader = String(req.headers["x-trace-id"] || req.requestId);
+  req.traceId = traceHeader;
+  res.setHeader("x-request-id", req.requestId);
+  res.setHeader("x-trace-id", req.traceId);
+  next();
+});
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false
+  })
+);
+
+const authRateWindowMs = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 60_000);
+const authRateLimit = Number(process.env.AUTH_RATE_LIMIT_MAX || 30);
+const authRateLimiter = rateLimit({
+  windowMs: authRateWindowMs,
+  limit: authRateLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}:${req.path}`,
+  handler(req, res) {
+    return res.status(429).json({ code: 429, message: "请求过于频繁，请稍后重试" });
+  }
+});
+
+app.use(cors(useStrictCors ? corsOptions : {}));
 app.use(express.json());
-app.use(morgan("dev"));
+app.use(
+  morgan((tokens, req, res) =>
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      type: "http_access",
+      requestId: req.requestId || "",
+      traceId: req.traceId || "",
+      userId: req.user ? Number(req.user.id) : null,
+      role: req.user ? req.user.role : null,
+      authReason: req.authReason || null,
+      method: tokens.method(req, res),
+      path: tokens.url(req, res),
+      status: Number(tokens.status(req, res) || 0),
+      contentLength: Number(tokens.res(req, res, "content-length") || 0),
+      responseTimeMs: Number(tokens["response-time"](req, res) || 0),
+      ip: req.ip,
+      userAgent: req.headers["user-agent"] || "",
+      origin: req.headers.origin || ""
+    })
+  )
+);
 app.use("/admin", express.static(adminPath));
 app.use("/miniapp", express.static(miniappPath));
+
+const roleAlias = {
+  super_admin: "admin",
+  admin: "admin",
+  teacher: "teacher",
+  student: "student"
+};
+
+const accessTokenTtl = process.env.JWT_ACCESS_EXPIRES_IN || "15m";
+const refreshTokenTtl = process.env.JWT_REFRESH_EXPIRES_IN || "7d";
+const jwtAccessSecret = process.env.JWT_ACCESS_SECRET || "dev-access-secret";
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || "dev-refresh-secret";
+
+const refreshTokenStore = new Map();
+const loginAttemptStore = new Map();
+const refreshAttemptStore = new Map();
+
+const allowUserIdLogin = String(process.env.AUTH_ALLOW_USER_ID_LOGIN || "true").toLowerCase() === "true";
+const loginFailWindowMs = Number(process.env.AUTH_FAIL_WINDOW_MS || 10 * 60_000);
+const loginFailMax = Number(process.env.AUTH_FAIL_MAX || 5);
+const loginFailBlockMs = Number(process.env.AUTH_FAIL_BLOCK_MS || 15 * 60_000);
+const refreshRateWindowMs = Number(process.env.AUTH_REFRESH_RATE_LIMIT_WINDOW_MS || 60_000);
+const refreshRateMax = Number(process.env.AUTH_REFRESH_RATE_LIMIT_MAX || 20);
+
+function normalizeRole(role) {
+  return roleAlias[String(role || "").trim()] || "student";
+}
+
+function isUserEnabled(value) {
+  if (value === false) return false;
+  if (value === 0) return false;
+  if (String(value) === "0") return false;
+  return true;
+}
+
+function sanitizeUser(user) {
+  if (!user) return null;
+  return {
+    id: Number(user.id),
+    name: user.name,
+    account: user.account || "",
+    ssoProvider: user.ssoProvider || "",
+    ssoSubject: user.ssoSubject || "",
+    role: normalizeRole(user.role),
+    rawRole: user.role,
+    enabled: isUserEnabled(user.enabled),
+    roleUpdatedAt: user.roleUpdatedAt || null,
+    phone: user.phone || ""
+  };
+}
+
+function toLoginType(payload) {
+  const explicit = String((payload && payload.loginType) || "").trim();
+  if (["password", "sso", "userId"].includes(explicit)) {
+    return explicit;
+  }
+
+  if (payload && payload.account && payload.password) {
+    return "password";
+  }
+  if (payload && payload.ssoProvider && payload.ssoSubject) {
+    return "sso";
+  }
+  return "userId";
+}
+
+function normalizeRoleInput(role) {
+  const value = String(role || "").trim().toLowerCase();
+  if (!value) return null;
+
+  const allowMap = {
+    super_admin: "super_admin",
+    admin: "admin",
+    teacher: "teacher",
+    student: "student"
+  };
+  return allowMap[value] || null;
+}
+
+function buildRoleChangedNotice(user, tokenRole) {
+  const latestRole = normalizeRole(user && user.role);
+  if (!latestRole || !tokenRole) return null;
+  if (latestRole === normalizeRole(tokenRole)) return null;
+  return {
+    type: "ROLE_CHANGED",
+    message: `检测到账号角色已变更（${tokenRole} -> ${latestRole}），请重新登录`,
+    fromRole: tokenRole,
+    toRole: latestRole
+  };
+}
+
+function buildAuthNoticeFromUser(user) {
+  if (!user) return [];
+  const notices = [];
+  if (user.enabled === false) {
+    notices.push({
+      type: "ACCOUNT_DISABLED",
+      message: "账号已被禁用，请联系管理员"
+    });
+  }
+  return notices;
+}
+
+function buildOperationLogPayload(base) {
+  return {
+    id: db.nextId(db.operationLogs),
+    type: String(base.type || "UNKNOWN"),
+    targetUserId: Number(base.targetUserId || 0),
+    targetUserName: String(base.targetUserName || ""),
+    beforeRole: base.beforeRole || null,
+    afterRole: base.afterRole || null,
+    beforeEnabled: typeof base.beforeEnabled === "boolean" ? base.beforeEnabled : null,
+    afterEnabled: typeof base.afterEnabled === "boolean" ? base.afterEnabled : null,
+    message: String(base.message || ""),
+    operatorId: base.audit ? Number(base.audit.operatorId || 0) : null,
+    operatorName: String(base.operatorName || ""),
+    operatorRole: base.audit ? String(base.audit.operatorRole || "") : "",
+    requestId: base.audit ? String(base.audit.requestId || "") : "",
+    traceId: base.audit ? String(base.audit.traceId || "") : "",
+    source: base.audit ? String(base.audit.source || "") : "",
+    ip: base.audit ? String(base.audit.ip || "") : "",
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function createOperationLog(payload) {
+  if (mysqlStore.useMySql) {
+    return mysqlStore.createOperationLog(payload);
+  }
+  const row = buildOperationLogPayload(payload);
+  db.operationLogs.push(row);
+  return row;
+}
+
+function mapUserActionType(beforeEnabled, afterEnabled) {
+  if (beforeEnabled === true && afterEnabled === false) return "ACCOUNT_DISABLED";
+  if (beforeEnabled === false && afterEnabled === true) return "ACCOUNT_ENABLED";
+  return "ACCOUNT_STATUS_UPDATED";
+}
+
+function buildRoleChangedMessage(beforeRole, afterRole) {
+  return `角色变更：${beforeRole || "unknown"} -> ${afterRole || "unknown"}`;
+}
+
+function verifyUserPassword(user, password) {
+  return String(user && user.password || "") === String(password || "");
+}
+
+async function findUserByAccount(account) {
+  const acc = String(account || "").trim();
+  if (!acc) return null;
+
+  if (mysqlStore.useMySql) {
+    const user = await mysqlStore.getUserByAccount(acc);
+    return user || null;
+  }
+
+  return db.users.find((item) => String(item.account || "") === acc) || null;
+}
+
+async function findUserBySso(ssoProvider, ssoSubject) {
+  const provider = String(ssoProvider || "").trim();
+  const subject = String(ssoSubject || "").trim();
+  if (!provider || !subject) return null;
+
+  if (mysqlStore.useMySql) {
+    const user = await mysqlStore.getUserBySso(provider, subject);
+    return user || null;
+  }
+
+  return (
+    db.users.find(
+      (item) =>
+        String(item.ssoProvider || "") === provider &&
+        String(item.ssoSubject || "") === subject
+    ) || null
+  );
+}
+
+function issueAccessToken(user) {
+  return jwt.sign(
+    {
+      sub: String(user.id),
+      role: user.role,
+      name: user.name,
+      type: "access"
+    },
+    jwtAccessSecret,
+    { expiresIn: accessTokenTtl }
+  );
+}
+
+function issueRefreshToken(user) {
+  return jwt.sign(
+    {
+      sub: String(user.id),
+      role: user.role,
+      type: "refresh"
+    },
+    jwtRefreshSecret,
+    { expiresIn: refreshTokenTtl }
+  );
+}
+
+function setRefreshToken(token, user) {
+  const payload = jwt.decode(token);
+  if (!payload || !payload.exp) return;
+  refreshTokenStore.set(token, {
+    user,
+    expMs: Number(payload.exp) * 1000
+  });
+}
+
+function purgeExpiredRefreshTokens() {
+  const now = Date.now();
+  for (const [token, record] of refreshTokenStore.entries()) {
+    if (!record || Number(record.expMs) <= now) {
+      refreshTokenStore.delete(token);
+    }
+  }
+}
+
+function getAuthIdentifier(payload = {}) {
+  const loginType = toLoginType(payload);
+  if (loginType === "password") {
+    return `account:${String(payload.account || "").trim().toLowerCase()}`;
+  }
+  if (loginType === "sso") {
+    return `sso:${String(payload.ssoProvider || "").trim().toLowerCase()}:${String(payload.ssoSubject || "").trim().toLowerCase()}`;
+  }
+  if (loginType === "userId") {
+    return `userId:${Number(payload.userId || 0) || 0}`;
+  }
+  return "unknown";
+}
+
+function getLoginAttemptKey(req, payload = {}) {
+  const ip = String(req.ip || "unknown");
+  return `${ip}:${getAuthIdentifier(payload)}`;
+}
+
+function getRefreshAttemptKey(req, payload = {}) {
+  const ip = String(req.ip || "unknown");
+  const token = String(payload.refreshToken || "").trim();
+  return `${ip}:${token ? token.slice(0, 18) : "no-token"}`;
+}
+
+function getRemainingBlockSeconds(blockUntilMs) {
+  const remainMs = Number(blockUntilMs || 0) - Date.now();
+  if (remainMs <= 0) return 0;
+  return Math.ceil(remainMs / 1000);
+}
+
+function takeAttempt(store, key, options = {}) {
+  const now = Date.now();
+  const windowMs = Number(options.windowMs || 60_000);
+  const maxFails = Number(options.maxFails || 5);
+  const blockMs = Number(options.blockMs || 5 * 60_000);
+
+  const prev = store.get(key) || { count: 0, firstAt: now, blockUntilMs: 0 };
+  if (Number(prev.blockUntilMs) > now) {
+    return {
+      blocked: true,
+      blockUntilMs: Number(prev.blockUntilMs),
+      count: Number(prev.count || 0)
+    };
+  }
+
+  if (now - Number(prev.firstAt || now) > windowMs) {
+    const reset = { count: 0, firstAt: now, blockUntilMs: 0 };
+    store.set(key, reset);
+    return { blocked: false, blockUntilMs: 0, count: 0 };
+  }
+
+  store.set(key, prev);
+  return { blocked: false, blockUntilMs: 0, count: Number(prev.count || 0) };
+}
+
+function markAttemptFailure(store, key, options = {}) {
+  const now = Date.now();
+  const windowMs = Number(options.windowMs || 60_000);
+  const maxFails = Number(options.maxFails || 5);
+  const blockMs = Number(options.blockMs || 5 * 60_000);
+
+  const prev = store.get(key) || { count: 0, firstAt: now, blockUntilMs: 0 };
+  const inWindow = now - Number(prev.firstAt || now) <= windowMs;
+  const nextCount = inWindow ? Number(prev.count || 0) + 1 : 1;
+  const firstAt = inWindow ? Number(prev.firstAt || now) : now;
+  const next = {
+    count: nextCount,
+    firstAt,
+    blockUntilMs: nextCount >= maxFails ? now + blockMs : 0
+  };
+
+  store.set(key, next);
+  return next;
+}
+
+function clearAttemptRecord(store, key) {
+  store.delete(key);
+}
+
+function purgeExpiredAttempts() {
+  const now = Date.now();
+  const all = [loginAttemptStore, refreshAttemptStore];
+  all.forEach((store) => {
+    for (const [key, value] of store.entries()) {
+      const blockUntilMs = Number(value && value.blockUntilMs || 0);
+      const firstAt = Number(value && value.firstAt || 0);
+      const count = Number(value && value.count || 0);
+      if (blockUntilMs > 0 && blockUntilMs > now) {
+        continue;
+      }
+      if (count <= 0 || now - firstAt > loginFailWindowMs * 2) {
+        store.delete(key);
+      }
+    }
+  });
+}
+
+async function findUserById(userId) {
+  const id = Number(userId);
+  if (!id) return null;
+
+  if (mysqlStore.useMySql) {
+    const user = await mysqlStore.getUserById(id);
+    return sanitizeUser(user);
+  }
+
+  const user = db.users.find((item) => Number(item.id) === id) || null;
+  return sanitizeUser(user);
+}
+
+async function authenticateUser(payload) {
+  const loginType = toLoginType(payload);
+
+  if (loginType === "userId") {
+    if (!allowUserIdLogin) {
+      return { errorType: "forbidden", message: "当前环境不允许 userId 登录" };
+    }
+    const userId = Number(payload.userId);
+    if (!userId) {
+      return { errorType: "bad_request", message: "userId 不能为空" };
+    }
+    const user = await findUserById(userId);
+    if (!user) {
+      return { errorType: "not_found", message: "用户不存在" };
+    }
+    return { user, loginType };
+  }
+
+  if (loginType === "password") {
+    const account = String(payload.account || "").trim();
+    const password = String(payload.password || "");
+    if (!account || !password) {
+      return { errorType: "bad_request", message: "account 和 password 不能为空" };
+    }
+
+    const rawUser = await findUserByAccount(account);
+    if (!rawUser) {
+      return { errorType: "not_found", message: "账号不存在" };
+    }
+    if (!verifyUserPassword(rawUser, password)) {
+      return { errorType: "forbidden", message: "账号或密码错误" };
+    }
+
+    return { user: sanitizeUser(rawUser), loginType };
+  }
+
+  if (loginType === "sso") {
+    const ssoProvider = String(payload.ssoProvider || "").trim();
+    const ssoSubject = String(payload.ssoSubject || "").trim();
+    if (!ssoProvider || !ssoSubject) {
+      return { errorType: "bad_request", message: "ssoProvider 和 ssoSubject 不能为空" };
+    }
+
+    const rawUser = await findUserBySso(ssoProvider, ssoSubject);
+    if (!rawUser) {
+      return { errorType: "not_found", message: "SSO 账号不存在" };
+    }
+
+    return { user: sanitizeUser(rawUser), loginType };
+  }
+
+  return { errorType: "bad_request", message: "不支持的登录类型" };
+}
+
+async function resolveRequestUser(req) {
+  const header = String(req.headers.authorization || "");
+  if (!header.startsWith("Bearer ")) {
+    return { user: null, reason: "NO_TOKEN" };
+  }
+
+  const token = header.slice(7).trim();
+  if (!token) return { user: null, reason: "NO_TOKEN" };
+
+  try {
+    const payload = jwt.verify(token, jwtAccessSecret);
+    if (payload.type !== "access") return { user: null, reason: "INVALID_TOKEN" };
+    const user = await findUserById(payload.sub);
+    if (!user) return { user: null, reason: "USER_NOT_FOUND" };
+    if (user.enabled === false) return { user: null, reason: "ACCOUNT_DISABLED" };
+
+    const roleNotice = buildRoleChangedNotice(user, payload.role);
+    if (roleNotice) {
+      return { user: null, reason: "ROLE_CHANGED", notice: roleNotice };
+    }
+
+    return { user, reason: null };
+  } catch (err) {
+    return { user: null, reason: "INVALID_TOKEN" };
+  }
+}
+
+async function requireAuth(req, res, next) {
+  const result = await resolveRequestUser(req);
+  if (!result.user) {
+    if (result.reason === "ACCOUNT_DISABLED") {
+      return res.status(401).json({
+        code: 401,
+        message: "账号已被禁用，请重新登录",
+        data: { notices: [{ type: "ACCOUNT_DISABLED", message: "账号已被禁用" }] }
+      });
+    }
+    if (result.reason === "ROLE_CHANGED") {
+      return res.status(401).json({
+        code: 401,
+        message: "账号角色已变更，请重新登录",
+        data: { notices: [result.notice] }
+      });
+    }
+    return res.status(401).json({ code: 401, message: "未登录或登录已过期" });
+  }
+  req.user = result.user;
+  next();
+}
+
+function requireRoles(allowedRoles) {
+  const roleSet = new Set((allowedRoles || []).map((item) => String(item)));
+  return async (req, res, next) => {
+    const result = await resolveRequestUser(req);
+    if (!result.user) {
+      if (result.reason === "ACCOUNT_DISABLED") {
+        return res.status(401).json({
+          code: 401,
+          message: "账号已被禁用，请重新登录",
+          data: { notices: [{ type: "ACCOUNT_DISABLED", message: "账号已被禁用" }] }
+        });
+      }
+      if (result.reason === "ROLE_CHANGED") {
+        return res.status(401).json({
+          code: 401,
+          message: "账号角色已变更，请重新登录",
+          data: { notices: [result.notice] }
+        });
+      }
+      return res.status(401).json({ code: 401, message: "未登录或登录已过期" });
+    }
+
+    if (!roleSet.has(result.user.role)) {
+      return res.status(403).json({ code: 403, message: "无权限访问该接口" });
+    }
+
+    req.user = result.user;
+    next();
+  };
+}
+
+function authResponse(user, options = {}) {
+  const accessToken = issueAccessToken(user);
+  const refreshToken = issueRefreshToken(user);
+  setRefreshToken(refreshToken, user);
+  return {
+    accessToken,
+    refreshToken,
+    tokenType: "Bearer",
+    expiresIn: accessTokenTtl,
+    refreshExpiresIn: refreshTokenTtl,
+    user,
+    notices: Array.isArray(options.notices) ? options.notices : []
+  };
+}
 
 function ok(res, data, message) {
   return res.json({ code: 0, message: message || "ok", data });
@@ -33,6 +595,24 @@ function badRequest(res, message) {
 
 function notFound(res, message) {
   return res.status(404).json({ code: 404, message });
+}
+
+function buildAuditMeta(req) {
+  return {
+    operatorId: req.user ? Number(req.user.id) : null,
+    operatorRole: req.user ? req.user.role : null,
+    requestId: req.requestId || null,
+    traceId: req.traceId || null,
+    source: req.headers["x-client-source"] || req.headers["user-agent"] || "unknown",
+    ip: req.ip || ""
+  };
+}
+
+function attachAuditMeta(data, req) {
+  return {
+    ...data,
+    _audit: buildAuditMeta(req)
+  };
 }
 
 function toPositiveInt(value, fallback) {
@@ -769,6 +1349,186 @@ app.get("/api/health", (req, res) => {
   ok(res, { timestamp: new Date().toISOString() }, "ok");
 });
 
+app.post("/api/auth/login", authRateLimiter, async (req, res) => {
+  const payload = req.body || {};
+  const attemptKey = getLoginAttemptKey(req, payload);
+
+  try {
+    purgeExpiredAttempts();
+    const attemptState = takeAttempt(loginAttemptStore, attemptKey, {
+      windowMs: loginFailWindowMs,
+      maxFails: loginFailMax,
+      blockMs: loginFailBlockMs
+    });
+    if (attemptState.blocked) {
+      const remain = getRemainingBlockSeconds(attemptState.blockUntilMs);
+      return res.status(429).json({
+        code: 429,
+        message: `登录失败次数过多，请 ${remain} 秒后重试`
+      });
+    }
+
+    const authResult = await authenticateUser(payload);
+    if (authResult.errorType === "bad_request") {
+      return badRequest(res, authResult.message);
+    }
+    if (authResult.errorType === "not_found") {
+      markAttemptFailure(loginAttemptStore, attemptKey, {
+        windowMs: loginFailWindowMs,
+        maxFails: loginFailMax,
+        blockMs: loginFailBlockMs
+      });
+      return notFound(res, authResult.message);
+    }
+    if (authResult.errorType === "forbidden") {
+      markAttemptFailure(loginAttemptStore, attemptKey, {
+        windowMs: loginFailWindowMs,
+        maxFails: loginFailMax,
+        blockMs: loginFailBlockMs
+      });
+      return res.status(403).json({ code: 403, message: authResult.message });
+    }
+
+    const user = authResult.user;
+    if (!user) {
+      markAttemptFailure(loginAttemptStore, attemptKey, {
+        windowMs: loginFailWindowMs,
+        maxFails: loginFailMax,
+        blockMs: loginFailBlockMs
+      });
+      return badRequest(res, "登录失败：用户信息异常");
+    }
+
+    const notices = buildAuthNoticeFromUser(user);
+    if (user.enabled === false) {
+      markAttemptFailure(loginAttemptStore, attemptKey, {
+        windowMs: loginFailWindowMs,
+        maxFails: loginFailMax,
+        blockMs: loginFailBlockMs
+      });
+      return res.status(403).json({ code: 403, message: "账号已禁用", data: { notices } });
+    }
+
+    clearAttemptRecord(loginAttemptStore, attemptKey);
+    purgeExpiredRefreshTokens();
+    return ok(res, authResponse(user, { notices }), "登录成功");
+  } catch (err) {
+    markAttemptFailure(loginAttemptStore, attemptKey, {
+      windowMs: loginFailWindowMs,
+      maxFails: loginFailMax,
+      blockMs: loginFailBlockMs
+    });
+    return badRequest(res, `登录失败：${err.message}`);
+  }
+});
+
+app.post("/api/auth/refresh", authRateLimiter, async (req, res) => {
+  const payload = req.body || {};
+  const refreshToken = String(payload.refreshToken || "").trim();
+  const refreshAttemptKey = getRefreshAttemptKey(req, payload);
+
+  const refreshAttemptState = takeAttempt(refreshAttemptStore, refreshAttemptKey, {
+    windowMs: refreshRateWindowMs,
+    maxFails: refreshRateMax,
+    blockMs: Math.max(30_000, refreshRateWindowMs)
+  });
+  if (refreshAttemptState.blocked) {
+    const remain = getRemainingBlockSeconds(refreshAttemptState.blockUntilMs);
+    return res.status(429).json({ code: 429, message: `刷新过于频繁，请 ${remain} 秒后重试` });
+  }
+
+  if (!refreshToken) {
+    markAttemptFailure(refreshAttemptStore, refreshAttemptKey, {
+      windowMs: refreshRateWindowMs,
+      maxFails: refreshRateMax,
+      blockMs: Math.max(30_000, refreshRateWindowMs)
+    });
+    return badRequest(res, "refreshToken 不能为空");
+  }
+
+  purgeExpiredRefreshTokens();
+
+  if (!refreshTokenStore.has(refreshToken)) {
+    markAttemptFailure(refreshAttemptStore, refreshAttemptKey, {
+      windowMs: refreshRateWindowMs,
+      maxFails: refreshRateMax,
+      blockMs: Math.max(30_000, refreshRateWindowMs)
+    });
+    return res.status(401).json({ code: 401, message: "refreshToken 无效或已过期" });
+  }
+
+  try {
+    const tokenPayload = jwt.verify(refreshToken, jwtRefreshSecret);
+    if (tokenPayload.type !== "refresh") {
+      markAttemptFailure(refreshAttemptStore, refreshAttemptKey, {
+        windowMs: refreshRateWindowMs,
+        maxFails: refreshRateMax,
+        blockMs: Math.max(30_000, refreshRateWindowMs)
+      });
+      return res.status(401).json({ code: 401, message: "refreshToken 无效" });
+    }
+
+    const user = await findUserById(tokenPayload.sub);
+    if (!user || user.enabled === false) {
+      refreshTokenStore.delete(refreshToken);
+      markAttemptFailure(refreshAttemptStore, refreshAttemptKey, {
+        windowMs: refreshRateWindowMs,
+        maxFails: refreshRateMax,
+        blockMs: Math.max(30_000, refreshRateWindowMs)
+      });
+      return res.status(401).json({
+        code: 401,
+        message: "用户不存在、已禁用或角色已变更，请重新登录",
+        data: {
+          notices: user ? buildAuthNoticeFromUser(user) : [{ type: "ACCOUNT_NOT_FOUND", message: "用户不存在" }]
+        }
+      });
+    }
+
+    const roleNotice = buildRoleChangedNotice(user, tokenPayload.role);
+    if (roleNotice) {
+      refreshTokenStore.delete(refreshToken);
+      markAttemptFailure(refreshAttemptStore, refreshAttemptKey, {
+        windowMs: refreshRateWindowMs,
+        maxFails: refreshRateMax,
+        blockMs: Math.max(30_000, refreshRateWindowMs)
+      });
+      return res.status(401).json({
+        code: 401,
+        message: "账号角色已变更，请重新登录",
+        data: { notices: [roleNotice] }
+      });
+    }
+
+    refreshTokenStore.delete(refreshToken);
+    clearAttemptRecord(refreshAttemptStore, refreshAttemptKey);
+    return ok(res, authResponse(user), "刷新成功");
+  } catch (err) {
+    refreshTokenStore.delete(refreshToken);
+    markAttemptFailure(refreshAttemptStore, refreshAttemptKey, {
+      windowMs: refreshRateWindowMs,
+      maxFails: refreshRateMax,
+      blockMs: Math.max(30_000, refreshRateWindowMs)
+    });
+    return res.status(401).json({ code: 401, message: "refreshToken 验证失败" });
+  }
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  const payload = req.body || {};
+  const refreshToken = String(payload.refreshToken || "").trim();
+
+  if (refreshToken) {
+    refreshTokenStore.delete(refreshToken);
+  }
+
+  return ok(res, { success: true }, "已退出登录");
+});
+
+app.get("/api/auth/me", requireAuth, (req, res) => {
+  ok(res, req.user);
+});
+
 app.get("/api/dashboard/stats", async (req, res) => {
   if (mysqlStore.useMySql) {
     try {
@@ -795,17 +1555,168 @@ app.get("/api/dashboard/stats", async (req, res) => {
   });
 });
 
-app.get("/api/users", async (req, res) => {
+app.get("/api/users", requireAuth, async (req, res) => {
   if (mysqlStore.useMySql) {
     try {
       const rows = await mysqlStore.getUsers();
-      return ok(res, rows);
+      return ok(res, rows.map((item) => sanitizeUser(item)));
     } catch (err) {
       return badRequest(res, `数据库查询失败：${err.message}`);
     }
   }
 
-  ok(res, db.users);
+  ok(res, db.users.map((item) => sanitizeUser(item)));
+});
+
+app.get("/api/users/operation-logs", requireRoles(["admin"]), async (req, res) => {
+  const { type, targetUserId, operatorId, page, pageSize } = req.query;
+
+  if (mysqlStore.useMySql) {
+    try {
+      const rows = await mysqlStore.getOperationLogs();
+      let list = rows;
+      if (type) {
+        list = list.filter((item) => String(item.type || "") === String(type));
+      }
+      if (targetUserId) {
+        list = list.filter((item) => Number(item.targetUserId) === Number(targetUserId));
+      }
+      if (operatorId) {
+        list = list.filter((item) => Number(item.operatorId) === Number(operatorId));
+      }
+      return ok(res, buildPagedResult(list, page, pageSize));
+    } catch (err) {
+      return badRequest(res, `数据库查询失败：${err.message}`);
+    }
+  }
+
+  let list = [...(db.operationLogs || [])];
+  if (type) {
+    list = list.filter((item) => String(item.type || "") === String(type));
+  }
+  if (targetUserId) {
+    list = list.filter((item) => Number(item.targetUserId) === Number(targetUserId));
+  }
+  if (operatorId) {
+    list = list.filter((item) => Number(item.operatorId) === Number(operatorId));
+  }
+  list.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+
+  return ok(res, buildPagedResult(list, page, pageSize));
+});
+
+app.patch("/api/users/:id", requireRoles(["admin"]), async (req, res) => {
+  const targetUserId = Number(req.params.id);
+  if (!targetUserId) {
+    return badRequest(res, "用户ID不合法");
+  }
+
+  const payload = req.body || {};
+  const wantsEnabledChange = Object.prototype.hasOwnProperty.call(payload, "enabled");
+  const wantsRoleChange = Object.prototype.hasOwnProperty.call(payload, "role");
+
+  if (!wantsEnabledChange && !wantsRoleChange) {
+    return badRequest(res, "请至少提供 enabled 或 role 字段");
+  }
+
+  const nextEnabled = wantsEnabledChange ? payload.enabled === true : undefined;
+  const nextRawRole = wantsRoleChange ? normalizeRoleInput(payload.role) : undefined;
+  if (wantsRoleChange && !nextRawRole) {
+    return badRequest(res, "role 仅支持 super_admin/admin/teacher/student");
+  }
+
+  if (Number(req.user.id) === targetUserId && wantsEnabledChange && nextEnabled === false) {
+    return badRequest(res, "不能禁用当前登录账号");
+  }
+
+  try {
+    const before = await findUserById(targetUserId);
+    if (!before) {
+      return notFound(res, "用户不存在");
+    }
+
+    let after = null;
+    const roleUpdatedAt = new Date().toISOString();
+
+    if (mysqlStore.useMySql) {
+      const updatePayload = {};
+      if (wantsEnabledChange) updatePayload.enabled = nextEnabled;
+      if (wantsRoleChange) {
+        updatePayload.role = nextRawRole;
+        updatePayload.roleUpdatedAt = roleUpdatedAt;
+      }
+      const row = await mysqlStore.updateUserById(targetUserId, updatePayload);
+      after = sanitizeUser(row);
+    } else {
+      const user = db.users.find((item) => Number(item.id) === targetUserId);
+      if (!user) {
+        return notFound(res, "用户不存在");
+      }
+      if (wantsEnabledChange) {
+        user.enabled = nextEnabled;
+      }
+      if (wantsRoleChange) {
+        user.role = nextRawRole;
+        user.roleUpdatedAt = roleUpdatedAt;
+      }
+      after = sanitizeUser(user);
+    }
+
+    const audit = buildAuditMeta(req);
+    const operatorName = req.user ? req.user.name : "系统";
+
+    if (wantsEnabledChange && before.enabled !== after.enabled) {
+      await createOperationLog({
+        type: mapUserActionType(before.enabled, after.enabled),
+        targetUserId: after.id,
+        targetUserName: after.name,
+        beforeRole: before.rawRole,
+        afterRole: after.rawRole,
+        beforeEnabled: before.enabled,
+        afterEnabled: after.enabled,
+        message: after.enabled ? "账号已启用" : "账号已禁用",
+        audit,
+        operatorName
+      });
+    }
+
+    if (wantsRoleChange && before.rawRole !== after.rawRole) {
+      await createOperationLog({
+        type: "ROLE_CHANGED",
+        targetUserId: after.id,
+        targetUserName: after.name,
+        beforeRole: before.rawRole,
+        afterRole: after.rawRole,
+        beforeEnabled: before.enabled,
+        afterEnabled: after.enabled,
+        message: buildRoleChangedMessage(before.rawRole, after.rawRole),
+        audit,
+        operatorName
+      });
+    }
+
+    const notices = [];
+    if (wantsEnabledChange && before.enabled !== after.enabled && after.enabled === false) {
+      notices.push({ type: "ACCOUNT_DISABLED", message: `${after.name} 已被禁用` });
+    }
+    if (wantsRoleChange && before.rawRole !== after.rawRole) {
+      notices.push({
+        type: "ROLE_CHANGED",
+        message: `${after.name} 角色已从 ${before.rawRole} 变更为 ${after.rawRole}`
+      });
+    }
+
+    return ok(
+      res,
+      {
+        user: after,
+        notices
+      },
+      "用户信息已更新"
+    );
+  } catch (err) {
+    return badRequest(res, `用户更新失败：${err.message}`);
+  }
 });
 
 app.get("/api/qr-scan-logs", (req, res) => {
@@ -946,7 +1857,7 @@ app.post("/api/devices/:id/qr", (req, res) => {
   return ok(res, device, "设备二维码已更新");
 });
 
-app.post("/api/devices", (req, res) => {
+app.post("/api/devices", requireRoles(["teacher", "admin"]), (req, res) => {
   const payload = req.body || {};
   if (!payload.name) {
     return badRequest(res, "设备名称不能为空");
@@ -964,7 +1875,7 @@ app.post("/api/devices", (req, res) => {
   };
 
   db.devices.push(record);
-  return res.status(201).json({ code: 0, message: "设备创建成功", data: record });
+  return res.status(201).json({ code: 0, message: "设备创建成功", data: attachAuditMeta(record, req) });
 });
 
 app.get("/api/consumables", async (req, res) => {
@@ -1147,7 +2058,7 @@ app.get("/api/consumables/stock-alerts", (req, res) => {
 });
 
 // 耗材出入库清单（进货/出货）
-app.get("/api/stock-movements", (req, res) => {
+app.get("/api/stock-movements", requireRoles(["teacher", "admin"]), (req, res) => {
   const { type, consumableId, warehouseId } = req.query;
   let list = [...db.stockMovements];
 
@@ -1167,7 +2078,7 @@ app.get("/api/stock-movements", (req, res) => {
   ok(res, list.map(buildStockMovementView));
 });
 
-app.post("/api/stock-movements", (req, res) => {
+app.post("/api/stock-movements", requireRoles(["teacher", "admin"]), (req, res) => {
   const payload = req.body || {};
 
   const type = payload.type;
@@ -1220,7 +2131,7 @@ app.post("/api/stock-movements", (req, res) => {
     type,
     quantity,
     note: payload.note || "",
-    userId: payload.userId ? Number(payload.userId) : null,
+    userId: Number(req.user.id),
     createdAt: new Date().toISOString()
   };
   db.stockMovements.push(movement);
@@ -1228,7 +2139,7 @@ app.post("/api/stock-movements", (req, res) => {
   return res.status(201).json({
     code: 0,
     message: "库存操作已记录",
-    data: { movement, consumable }
+    data: attachAuditMeta({ movement, consumable }, req)
   });
 });
 
@@ -1301,16 +2212,20 @@ app.get("/api/borrows", async (req, res) => {
   ok(res, paged);
 });
 
-app.post("/api/borrows", async (req, res) => {
+app.post("/api/borrows", requireAuth, async (req, res) => {
   const payload = req.body || {};
-  if (!payload.deviceId || !payload.userId || !payload.borrowDate || !payload.expectedReturnDate) {
+  const safeUserId = Number(req.user.id);
+  if (!payload.deviceId || !payload.borrowDate || !payload.expectedReturnDate) {
     return badRequest(res, "借用参数不完整");
   }
 
   if (mysqlStore.useMySql) {
     try {
-      const record = await mysqlStore.createBorrow(payload);
-      return res.status(201).json({ code: 0, message: "借用申请已提交", data: record });
+      const record = await mysqlStore.createBorrow({
+        ...payload,
+        userId: safeUserId
+      });
+      return res.status(201).json({ code: 0, message: "借用申请已提交", data: attachAuditMeta(record, req) });
     } catch (err) {
       return badRequest(res, `数据库写入失败：${err.message}`);
     }
@@ -1318,16 +2233,16 @@ app.post("/api/borrows", async (req, res) => {
 
   const record = createBorrowRecord({
     deviceId: payload.deviceId,
-    userId: payload.userId,
+    userId: safeUserId,
     purpose: payload.purpose || "",
     borrowDate: payload.borrowDate,
     expectedReturnDate: payload.expectedReturnDate,
     expectedReturnTime: payload.expectedReturnTime || "18:00"
   });
-  return res.status(201).json({ code: 0, message: "借用申请已提交", data: record });
+  return res.status(201).json({ code: 0, message: "借用申请已提交", data: attachAuditMeta(record, req) });
 });
 
-app.patch("/api/borrows/:id/status", async (req, res) => {
+app.patch("/api/borrows/:id/status", requireRoles(["teacher", "admin"]), async (req, res) => {
   if (mysqlStore.useMySql) {
     try {
       const record = await mysqlStore.getBorrowById(req.params.id);
@@ -1426,9 +2341,10 @@ app.get("/api/consumable-applications", async (req, res) => {
   ok(res, paged);
 });
 
-app.post("/api/consumable-applications", async (req, res) => {
+app.post("/api/consumable-applications", requireAuth, async (req, res) => {
   const payload = req.body || {};
-  if (!payload.consumableId || !payload.userId || !payload.quantity) {
+  const safeUserId = Number(req.user.id);
+  if (!payload.consumableId || !payload.quantity) {
     return badRequest(res, "申领参数不完整");
   }
 
@@ -1444,9 +2360,10 @@ app.post("/api/consumable-applications", async (req, res) => {
 
       const record = await mysqlStore.createConsumableApplication({
         ...payload,
+        userId: safeUserId,
         warehouseId
       });
-      return res.status(201).json({ code: 0, message: "耗材申领已提交", data: record });
+      return res.status(201).json({ code: 0, message: "耗材申领已提交", data: attachAuditMeta(record, req) });
     } catch (err) {
       return badRequest(res, `数据库写入失败：${err.message}`);
     }
@@ -1460,15 +2377,15 @@ app.post("/api/consumable-applications", async (req, res) => {
   const record = createConsumableApplicationRecord({
     consumableId: payload.consumableId,
     warehouseId,
-    userId: payload.userId,
+    userId: safeUserId,
     quantity: payload.quantity,
     purpose: payload.purpose || ""
   });
 
-  return res.status(201).json({ code: 0, message: "耗材申领已提交", data: record });
+  return res.status(201).json({ code: 0, message: "耗材申领已提交", data: attachAuditMeta(record, req) });
 });
 
-app.patch("/api/consumable-applications/:id/status", async (req, res) => {
+app.patch("/api/consumable-applications/:id/status", requireRoles(["teacher", "admin"]), async (req, res) => {
   if (mysqlStore.useMySql) {
     try {
       const record = await mysqlStore.getConsumableApplicationById(req.params.id);
@@ -1511,9 +2428,11 @@ app.patch("/api/consumable-applications/:id/status", async (req, res) => {
   return ok(res, result.record, "申领状态已更新");
 });
 
-app.get("/api/approvals", async (req, res) => {
-  const { status, type, applicantId, page, pageSize } = req.query;
+app.get("/api/approvals", requireAuth, async (req, res) => {
+  const { status, type, applicantId: applicantIdRaw, page, pageSize } = req.query;
   const statusList = normalizeStatusList(status);
+
+  const applicantId = req.user.role === "student" ? Number(req.user.id) : applicantIdRaw;
 
   if (mysqlStore.useMySql) {
     try {
@@ -1553,7 +2472,7 @@ app.get("/api/approvals", async (req, res) => {
   ok(res, paged);
 });
 
-app.post("/api/approvals/:id/action", async (req, res) => {
+app.post("/api/approvals/:id/action", requireRoles(["teacher", "admin"]), async (req, res) => {
   const nextStatus = req.body.status;
   const remark = String((req.body && req.body.remark) || "").trim();
   if (!["approved", "rejected"].includes(nextStatus)) {
@@ -1570,7 +2489,7 @@ app.post("/api/approvals/:id/action", async (req, res) => {
       if (view) {
         view.remark = remark;
       }
-      return ok(res, view, "审批已处理");
+      return ok(res, attachAuditMeta(view, req), "审批已处理");
     } catch (err) {
       if (String(err.message || "").includes("审批记录不存在")) {
         return notFound(res, "审批记录不存在");
@@ -1594,7 +2513,7 @@ app.post("/api/approvals/:id/action", async (req, res) => {
   approval.updatedAt = new Date().toISOString();
 
   syncApproval(approval.type, approval.businessId, nextStatus, remark);
-  return ok(res, buildApprovalView(approval), "审批已处理");
+  return ok(res, attachAuditMeta(buildApprovalView(approval), req), "审批已处理");
 });
 
 // AI 助手（MVP 规则引擎：库存分析 + 代提交借用/申领）
@@ -1642,6 +2561,28 @@ app.post("/api/ai/ask", (req, res) => {
       recordId: null
     }
   });
+});
+
+app.use((err, req, res, next) => {
+  if (String(err && err.message || "").includes("CORS origin not allowed")) {
+    return res.status(403).json({ code: 403, message: "CORS origin forbidden" });
+  }
+
+  console.error(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      type: "server_error",
+      requestId: req.requestId || "",
+      traceId: req.traceId || "",
+      userId: req.user ? Number(req.user.id) : null,
+      role: req.user ? req.user.role : null,
+      method: req.method,
+      path: req.originalUrl,
+      message: err && err.message ? err.message : "unknown_error"
+    })
+  );
+
+  return res.status(500).json({ code: 500, message: "服务异常" });
 });
 
 app.use((req, res) => {

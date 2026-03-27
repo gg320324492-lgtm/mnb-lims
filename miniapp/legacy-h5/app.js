@@ -1,5 +1,14 @@
 const state = {
   currentUserId: 3,
+  auth: {
+    accessToken: '',
+    refreshToken: '',
+    user: null,
+    accessTokenExpiresAt: 0,
+    loginPromise: null,
+    refreshPromise: null,
+    warnedExpiring: false
+  },
   users: [],
   devices: [],
   consumables: [],
@@ -55,14 +64,126 @@ function badge(status, lowStock = false) {
   return `<span class="badge ${escapeHtml(cls)}">${escapeHtml(text)}</span>`;
 }
 
+function parseExpireMs(input, fallbackMs = 15 * 60 * 1000) {
+  const raw = String(input || '').trim();
+  if (!raw) return fallbackMs;
+  const m = raw.match(/^(\d+)([smhd])$/i);
+  if (!m) {
+    const num = Number(raw);
+    return Number.isFinite(num) && num > 0 ? num * 1000 : fallbackMs;
+  }
+
+  const value = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  if (unit === 's') return value * 1000;
+  if (unit === 'm') return value * 60 * 1000;
+  if (unit === 'h') return value * 60 * 60 * 1000;
+  return value * 24 * 60 * 60 * 1000;
+}
+
+function setAuth(authData) {
+  state.auth.accessToken = String((authData && authData.accessToken) || '');
+  state.auth.refreshToken = String((authData && authData.refreshToken) || '');
+  state.auth.user = (authData && authData.user) || null;
+  state.auth.accessTokenExpiresAt = Date.now() + parseExpireMs(authData && authData.expiresIn);
+  state.auth.warnedExpiring = false;
+}
+
+async function ensureLogin() {
+  if (state.auth.accessToken) return;
+  if (state.auth.loginPromise) {
+    await state.auth.loginPromise;
+    return;
+  }
+
+  state.auth.loginPromise = (async () => {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Source': 'legacy-h5'
+      },
+      body: JSON.stringify({
+        loginType: 'userId',
+        userId: state.currentUserId
+      })
+    });
+    const json = await res.json();
+    if (!res.ok || json.code !== 0) {
+      throw new Error(json.message || '登录失败');
+    }
+    setAuth(json.data);
+  })();
+
+  try {
+    await state.auth.loginPromise;
+  } finally {
+    state.auth.loginPromise = null;
+  }
+}
+
+async function refreshLogin() {
+  if (!state.auth.refreshToken) {
+    throw new Error('登录已失效');
+  }
+  if (state.auth.refreshPromise) {
+    await state.auth.refreshPromise;
+    return;
+  }
+
+  state.auth.refreshPromise = (async () => {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Source': 'legacy-h5'
+      },
+      body: JSON.stringify({ refreshToken: state.auth.refreshToken })
+    });
+    const json = await res.json();
+    if (!res.ok || json.code !== 0) {
+      throw new Error(json.message || '刷新登录失败');
+    }
+    setAuth(json.data);
+  })();
+
+  try {
+    await state.auth.refreshPromise;
+  } finally {
+    state.auth.refreshPromise = null;
+  }
+}
+
 async function api(url, options = {}) {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options
-  });
-  const json = await res.json();
+  await ensureLogin();
+
+  const remainMs = Number(state.auth.accessTokenExpiresAt || 0) - Date.now();
+  if (remainMs > 0 && remainMs <= 60_000 && !state.auth.warnedExpiring) {
+    state.auth.warnedExpiring = true;
+    showToast('登录即将过期，正在自动续期...', 1800);
+  }
+
+  const doFetch = () =>
+    fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Source': 'legacy-h5',
+        Authorization: `Bearer ${state.auth.accessToken}`
+      },
+      ...options
+    });
+
+  let res = await doFetch();
+  let json = await res.json();
+
+  if (res.status === 401) {
+    await refreshLogin();
+    res = await doFetch();
+    json = await res.json();
+  }
+
   if (!res.ok || json.code !== 0) {
-    throw new Error(json.message || "请求失败");
+    throw new Error(json.message || '请求失败');
   }
   return json.data;
 }
@@ -373,7 +494,6 @@ async function handleBorrowSubmit(event) {
   event.preventDefault();
   const form = new FormData(event.target);
   const payload = Object.fromEntries(form.entries());
-  payload.userId = state.currentUserId;
   await api('/api/borrows', {
     method: 'POST',
     body: JSON.stringify(payload)
@@ -388,7 +508,6 @@ async function handleApplySubmit(event) {
   event.preventDefault();
   const form = new FormData(event.target);
   const payload = Object.fromEntries(form.entries());
-  payload.userId = state.currentUserId;
   payload.warehouseId = Number(payload.warehouseId || state.selectedWarehouseId || 1);
   payload.quantity = Number(payload.quantity || 1);
   await api('/api/consumable-applications', {
@@ -496,10 +615,21 @@ function bindEvents() {
     button.addEventListener('click', () => setPage(button.dataset.target));
   });
 
-  document.getElementById('user-select').addEventListener('change', (event) => {
+  document.getElementById('user-select').addEventListener('change', async (event) => {
     state.currentUserId = Number(event.target.value);
+    state.auth.accessToken = '';
+    state.auth.refreshToken = '';
+    state.auth.user = null;
+    state.auth.accessTokenExpiresAt = 0;
+    state.auth.warnedExpiring = false;
+    state.auth.loginPromise = null;
+    state.auth.refreshPromise = null;
+    state.qrSelectedDeviceId = null;
+    state.qrSelectedConsumableId = null;
+    state.aiResponseText = '';
+    await refreshData(true);
     renderAll();
-    showToast('已切换当前用户');
+    showToast('已切换当前用户，登录态与页面状态已重置');
   });
 
   document.getElementById('borrow-form').addEventListener('submit', async (event) => {

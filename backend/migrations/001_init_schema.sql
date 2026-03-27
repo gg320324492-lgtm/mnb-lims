@@ -1,10 +1,3 @@
-CREATE DATABASE IF NOT EXISTS lab_miniapp DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE lab_miniapp;
-
--- NOTE:
--- This file is now legacy bootstrap snapshot.
--- New schema/data changes must be added via backend/migrations/*.sql and run with `npm run db:migrate`.
-
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(64) NOT NULL,
@@ -74,13 +67,10 @@ CREATE TABLE IF NOT EXISTS approvals (
   business_id BIGINT NOT NULL,
   applicant_id BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
-  remark VARCHAR(255) NOT NULL DEFAULT '',
+  remark VARCHAR(255) DEFAULT '',
   created_at DATETIME NOT NULL,
   updated_at DATETIME NULL
 );
-
-ALTER TABLE approvals
-  ADD COLUMN IF NOT EXISTS remark VARCHAR(255) NOT NULL DEFAULT '' AFTER status;
 
 INSERT INTO users (id, name, role, phone) VALUES
 (1, '系统管理员', 'super_admin', '13800000000'),

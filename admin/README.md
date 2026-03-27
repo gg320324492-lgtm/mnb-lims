@@ -9,6 +9,15 @@
 - 耗材台账
 - 借用记录
 - 申领记录
+- 用户与权限（账号禁用、角色变更、操作日志）
+
+## 登录方式（已升级）
+- 账号密码登录（`account + password`）
+- SSO 登录（`ssoProvider + ssoSubject`）
+
+默认测试账号（mock 数据）：
+- 管理员：`admin / admin123`
+- 教师：`teacher.li / teacher123`
 
 ## 打开方式
 1. 进入 backend 目录执行 npm start

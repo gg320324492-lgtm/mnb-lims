@@ -81,12 +81,18 @@ Page({
 
     const userId = Number(user.id);
     const app = getApp();
-    app.setCurrentUser(userId);
+    const changed = app.setCurrentUser(userId);
     this.setData({
       currentUserId: userId,
       currentUserIndex: index,
-      currentUserName: user.name
+      currentUserName: user.name,
+      myTodos: []
     });
+
+    if (changed) {
+      wx.showToast({ title: '已切换用户，正在刷新数据', icon: 'none' });
+    }
+
     this.loadData();
   },
 

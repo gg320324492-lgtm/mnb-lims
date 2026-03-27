@@ -11,19 +11,37 @@ const users = [
   {
     id: 1,
     name: "系统管理员",
+    account: "admin",
+    password: "admin123",
+    ssoProvider: "feishu",
+    ssoSubject: "admin@lab.local",
     role: "super_admin",
+    enabled: true,
+    roleUpdatedAt: "2026-03-20T00:00:00.000Z",
     phone: "13800000000"
   },
   {
     id: 2,
     name: "李老师",
+    account: "teacher.li",
+    password: "teacher123",
+    ssoProvider: "feishu",
+    ssoSubject: "teacher.li@lab.local",
     role: "teacher",
+    enabled: true,
+    roleUpdatedAt: "2026-03-20T00:00:00.000Z",
     phone: "13800000001"
   },
   {
     id: 3,
     name: "王同学",
+    account: "student.wang",
+    password: "student123",
+    ssoProvider: "feishu",
+    ssoSubject: "student.wang@lab.local",
     role: "student",
+    enabled: true,
+    roleUpdatedAt: "2026-03-20T00:00:00.000Z",
     phone: "13800000002"
   }
 ];
@@ -190,6 +208,29 @@ const qrScanLogs = [
   }
 ];
 
+// 操作日志（账号禁用、角色变更）
+const operationLogs = [
+  {
+    id: 1,
+    type: "ROLE_CHANGED",
+    targetUserId: 2,
+    targetUserName: "李老师",
+    beforeRole: "teacher",
+    afterRole: "teacher",
+    beforeEnabled: true,
+    afterEnabled: true,
+    message: "初始化角色",
+    operatorId: 1,
+    operatorName: "系统管理员",
+    operatorRole: "super_admin",
+    requestId: "seed",
+    traceId: "seed",
+    source: "seed",
+    ip: "127.0.0.1",
+    createdAt: "2026-03-20T08:10:00.000Z"
+  }
+];
+
 function nextId(list) {
   if (!Array.isArray(list) || list.length === 0) return 1;
   return Math.max(...list.map(item => Number(item.id) || 0)) + 1;
@@ -207,6 +248,7 @@ module.exports = {
   approvals,
   stockMovements,
   qrScanLogs,
+  operationLogs,
   nextId,
   generateQrToken
 };

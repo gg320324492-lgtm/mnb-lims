@@ -7,28 +7,78 @@ function getApiBase() {
   return app.globalData.apiBase;
 }
 
-function request(path, method = 'GET', data) {
-  return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${getApiBase()}${path}`,
-      method,
-      data,
-      header: {
-        'Content-Type': 'application/json'
-      },
-      success(res) {
-        const body = res.data || {};
-        if (res.statusCode >= 200 && res.statusCode < 300 && body.code === 0) {
-          resolve(body.data);
-          return;
-        }
-        reject(new Error(body.message || `请求失败(${res.statusCode})`));
-      },
-      fail(err) {
-        reject(new Error(err.errMsg || '网络请求失败'));
+async function request(path, method = 'GET', data, options = {}) {
+  const app = getAppSafe();
+  const requiresAuth = options.auth !== false;
+
+  const doRequest = async (token) => {
+    const header = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      header.Authorization = `Bearer ${token}`;
+    }
+
+    return app.requestRaw(path, method, data, header);
+  };
+
+  try {
+    const token = requiresAuth ? await app.ensureAuthReady() : '';
+    const res = await doRequest(token);
+    const body = res.data || {};
+
+    if (res.statusCode >= 200 && res.statusCode < 300 && body.code === 0) {
+      return body.data;
+    }
+
+    if (requiresAuth && res.statusCode === 401) {
+      const notices = Array.isArray(body.data && body.data.notices) ? body.data.notices : [];
+      if (notices.some((n) => n && n.type === 'ROLE_CHANGED')) {
+        wx.showToast({ title: '检测到角色变更，正在重新登录', icon: 'none' });
       }
-    });
-  });
+      if (notices.some((n) => n && n.type === 'ACCOUNT_DISABLED')) {
+        app.clearAuth();
+        wx.showModal({
+          title: '账号已禁用',
+          content: '当前账号已被禁用，请联系管理员。',
+          showCancel: false
+        });
+        throw new Error(body.message || '账号已禁用');
+      }
+
+      const refreshed = await app.refreshAccessToken();
+      const retryRes = await doRequest(refreshed.accessToken);
+      const retryBody = retryRes.data || {};
+      if (retryRes.statusCode >= 200 && retryRes.statusCode < 300 && retryBody.code === 0) {
+        return retryBody.data;
+      }
+      throw new Error(retryBody.message || `请求失败(${retryRes.statusCode})`);
+    }
+
+    throw new Error(body.message || `请求失败(${res.statusCode})`);
+  } catch (err) {
+    if (requiresAuth && /refreshToken|401|过期|登录/.test(String(err.message || ''))) {
+      try {
+        const newToken = await app.forceRelogin();
+        const reloginRes = await doRequest(newToken);
+        const reloginBody = reloginRes.data || {};
+        if (reloginRes.statusCode >= 200 && reloginRes.statusCode < 300 && reloginBody.code === 0) {
+          return reloginBody.data;
+        }
+        throw new Error(reloginBody.message || `请求失败(${reloginRes.statusCode})`);
+      } catch (reloginErr) {
+        app.clearAuth();
+        wx.showModal({
+          title: '登录失效',
+          content: '登录状态已失效，请重新进入页面重试。',
+          showCancel: false
+        });
+        throw new Error(reloginErr.message || '重新登录失败');
+      }
+    }
+
+    throw new Error(err.message || '网络请求失败');
+  }
 }
 
 function formatStatus(status) {
@@ -89,5 +139,6 @@ function parseQrPayloadFromText(rawValue) {
 module.exports = {
   request,
   formatStatus,
-  parseQrPayloadFromText
+  parseQrPayloadFromText,
+  getApiBase
 };

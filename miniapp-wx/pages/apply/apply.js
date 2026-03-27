@@ -128,12 +128,10 @@ Page({
       return;
     }
 
-    const app = getApp();
     try {
       await request('/api/consumable-applications', 'POST', {
         consumableId: consumable.id,
         warehouseId: warehouse.id,
-        userId: app.globalData.currentUserId,
         quantity,
         purpose
       });

@@ -5,14 +5,27 @@
   "main": "src/app.js",
   "scripts": {
     "dev": "node src/app.js",
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "lint": "node scripts/lint.js",
+    "check:syntax": "node --check src/app.js && node --check src/data/mysqlStore.js && node --check src/data/mockDb.js",
+    "test:smoke": "node scripts/smoke-test.js",
+    "test:e2e": "node scripts/e2e-admin-h5.js",
+    "test:e2e:browser": "node scripts/e2e-browser.js",
+    "db:migrate": "node scripts/run-migrations.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "mysql2": "^3.20.0",
     "pdfkit": "^0.15.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "playwright": "^1.52.0"
   }
 }

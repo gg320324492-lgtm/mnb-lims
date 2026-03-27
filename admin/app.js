@@ -1,5 +1,17 @@
 const state = {
   stats: null,
+  auth: {
+    accessToken: "",
+    refreshToken: "",
+    user: null,
+    loginType: localStorage.getItem("adminLoginType") || "password",
+    account: localStorage.getItem("adminLoginAccount") || "admin",
+    password: "",
+    ssoProvider: localStorage.getItem("adminLoginSsoProvider") || "feishu",
+    ssoSubject: localStorage.getItem("adminLoginSsoSubject") || "admin@lab.local"
+  },
+  users: [],
+  operationLogs: [],
   approvals: [],
   approvalsPagination: {
     page: 1,
@@ -80,6 +92,10 @@ const sectionMeta = {
   qrLogs: {
     title: "扫码日志",
     desc: "查看设备/耗材二维码的扫码审计记录"
+  },
+  userOps: {
+    title: "用户与权限",
+    desc: "账号禁用、角色变更与操作日志审计"
   }
 };
 
@@ -110,17 +126,256 @@ function badge(status, extraClass) {
   return `<span class="badge ${escapeHtml(cls)}">${escapeHtml(statusLabel(status))}</span>`;
 }
 
-async function apiRequest(url, options = {}) {
-  const response = await fetch(url, {
+function authHeaders() {
+  const headers = {
+    "Content-Type": "application/json",
+    "X-Client-Source": "admin-web"
+  };
+  if (state.auth.accessToken) {
+    headers.Authorization = `Bearer ${state.auth.accessToken}`;
+  }
+  return headers;
+}
+
+function setAuthFromPayload(payload) {
+  state.auth.accessToken = String((payload && payload.accessToken) || "");
+  state.auth.refreshToken = String((payload && payload.refreshToken) || "");
+  state.auth.user = (payload && payload.user) || null;
+}
+
+function renderAuthSummary() {
+  const el = document.getElementById("auth-summary");
+  if (!el) return;
+
+  if (!state.auth.user) {
+    const modeText = state.auth.loginType === "sso" ? "SSO" : "账号密码";
+    const idText = state.auth.loginType === "sso"
+      ? `${state.auth.ssoProvider || "-"} / ${state.auth.ssoSubject || "-"}`
+      : state.auth.account || "-";
+    el.textContent = `未登录（${modeText}：${idText}）`;
+    return;
+  }
+
+  const enabledText = state.auth.user.enabled === false ? "已禁用" : "启用";
+  el.textContent = `已登录：${state.auth.user.name || "-"} / 角色：${state.auth.user.role || "-"} / 状态：${enabledText}`;
+}
+
+function renderUserOpNotices(notices = [], isError = false) {
+  const el = document.getElementById("user-op-notices");
+  if (!el) return;
+
+  if (!Array.isArray(notices) || notices.length === 0) {
+    el.className = "message hidden";
+    el.textContent = "";
+    return;
+  }
+
+  const text = notices.map((item) => item && item.message ? item.message : "").filter(Boolean).join("；");
+  if (!text) {
+    el.className = "message hidden";
+    el.textContent = "";
+    return;
+  }
+
+  el.className = `message ${isError ? "error" : ""}`.trim();
+  el.textContent = text;
+}
+
+function renderUsers() {
+  renderTable(
+    "users-table",
+    [
+      { title: "ID", key: "id" },
+      { title: "姓名", key: "name" },
+      { title: "账号", key: "account" },
+      {
+        title: "SSO",
+        render: (row) =>
+          row.ssoProvider && row.ssoSubject
+            ? `${escapeHtml(row.ssoProvider)} / ${escapeHtml(row.ssoSubject)}`
+            : '<span class="muted">-</span>'
+      },
+      { title: "角色", render: (row) => escapeHtml(row.rawRole || row.role || "-") },
+      {
+        title: "账号状态",
+        render: (row) => badge(row.enabled === false ? "disabled" : "enabled")
+      },
+      {
+        title: "角色更新时间",
+        render: (row) => row.roleUpdatedAt ? escapeHtml(row.roleUpdatedAt) : '<span class="muted">-</span>'
+      },
+      {
+        title: "操作",
+        render: (row) => {
+          const enableAction = row.enabled === false ? "enable" : "disable";
+          const enableText = row.enabled === false ? "启用账号" : "禁用账号";
+          return `
+            <div class="action-group">
+              <button class="action-btn" onclick="handleUserEnableToggle(${row.id}, '${enableAction}')">${enableText}</button>
+              <button class="action-btn approve" onclick="handleUserRoleChange(${row.id}, '${escapeHtml(row.rawRole || row.role || "student")}')">变更角色</button>
+            </div>
+          `;
+        }
+      }
+    ],
+    state.users,
+    "暂无用户数据"
+  );
+}
+
+function renderOperationLogs() {
+  renderTable(
+    "operation-logs-table",
+    [
+      { title: "日志ID", key: "id" },
+      { title: "类型", key: "type" },
+      {
+        title: "目标用户",
+        render: (row) => `${escapeHtml(row.targetUserName || "-")} (#${escapeHtml(row.targetUserId || "-")})`
+      },
+      {
+        title: "变更详情",
+        render: (row) => {
+          const roleText = row.beforeRole || row.afterRole
+            ? `角色：${escapeHtml(row.beforeRole || "-")} -> ${escapeHtml(row.afterRole || "-")}`
+            : '<span class="muted">角色无变化</span>';
+          const enabledText = typeof row.beforeEnabled === "boolean" || typeof row.afterEnabled === "boolean"
+            ? `状态：${statusLabel(row.beforeEnabled === false ? "disabled" : "enabled")} -> ${statusLabel(row.afterEnabled === false ? "disabled" : "enabled")}`
+            : '<span class="muted">状态无变化</span>';
+          return `<div>${roleText}</div><div class="muted">${enabledText}</div>`;
+        }
+      },
+      { title: "说明", key: "message" },
+      {
+        title: "操作人",
+        render: (row) => `${escapeHtml(row.operatorName || "-")} (${escapeHtml(row.operatorRole || "-")})`
+      },
+      { title: "时间", key: "createdAt" }
+    ],
+    state.operationLogs,
+    "暂无操作日志"
+  );
+}
+
+async function loadUserOps() {
+  const [users, logsResp] = await Promise.all([
+    apiRequest("/api/users"),
+    apiRequest("/api/users/operation-logs?page=1&pageSize=20")
+  ]);
+  state.users = users || [];
+  state.operationLogs = (logsResp && logsResp.items) || [];
+  renderUsers();
+  renderOperationLogs();
+}
+
+async function loginAdmin() {
+  const payload = state.auth.loginType === "sso"
+    ? {
+        loginType: "sso",
+        ssoProvider: state.auth.ssoProvider,
+        ssoSubject: state.auth.ssoSubject
+      }
+    : {
+        loginType: "password",
+        account: state.auth.account,
+        password: state.auth.password
+      };
+
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "X-Client-Source": "admin-web"
     },
-    ...options
+    body: JSON.stringify(payload)
   });
+
   const json = await response.json();
+  if (!response.ok || json.code !== 0 || !json.data) {
+    const notices = json && json.data && Array.isArray(json.data.notices) ? json.data.notices : [];
+    if (notices.length > 0) {
+      renderUserOpNotices(notices, true);
+    }
+    throw new Error(json.message || "管理员登录失败");
+  }
+
+  const role = String((json.data.user && json.data.user.role) || "");
+  const enabled = json.data.user && json.data.user.enabled !== false;
+  const notices = Array.isArray(json.data.notices) ? json.data.notices : [];
+  if (!enabled) {
+    throw new Error("当前账号已禁用");
+  }
+  if (!["admin", "teacher"].includes(role)) {
+    throw new Error("当前账号无管理端访问权限");
+  }
+
+  if (notices.some((item) => item && item.type === "ACCOUNT_DISABLED")) {
+    throw new Error("账号已禁用，请联系管理员");
+  }
+  if (notices.some((item) => item && item.type === "ROLE_CHANGED")) {
+    setMessage("提示：检测到角色变更，已按最新角色登录");
+  }
+
+  setAuthFromPayload(json.data);
+  renderAuthSummary();
+}
+
+async function refreshAdminToken() {
+  if (!state.auth.refreshToken) {
+    throw new Error("refreshToken 缺失，请重新登录");
+  }
+
+  const response = await fetch("/api/auth/refresh", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Client-Source": "admin-web"
+    },
+    body: JSON.stringify({ refreshToken: state.auth.refreshToken })
+  });
+
+  const json = await response.json();
+  if (!response.ok || json.code !== 0 || !json.data) {
+    const notices = json && json.data && Array.isArray(json.data.notices) ? json.data.notices : [];
+    if (notices.length > 0) {
+      renderUserOpNotices(notices, true);
+    }
+    throw new Error(json.message || "刷新登录态失败");
+  }
+
+  setAuthFromPayload(json.data);
+  renderAuthSummary();
+}
+
+async function apiRequest(url, options = {}) {
+  const doFetch = async () =>
+    fetch(url, {
+      headers: authHeaders(),
+      ...options
+    });
+
+  let response = await doFetch();
+  let json = await response.json();
+
+  if (response.status === 401) {
+    const notices = json && json.data && Array.isArray(json.data.notices) ? json.data.notices : [];
+    if (notices.length > 0) {
+      renderUserOpNotices(notices, true);
+    }
+
+    await refreshAdminToken();
+    response = await doFetch();
+    json = await response.json();
+  }
+
   if (!response.ok || json.code !== 0) {
+    const notices = json && json.data && Array.isArray(json.data.notices) ? json.data.notices : [];
+    if (notices.length > 0) {
+      renderUserOpNotices(notices, true);
+    }
     throw new Error(json.message || "请求失败");
   }
+
   return json.data;
 }
 
@@ -589,6 +844,9 @@ function renderInventory() {
 async function loadAll() {
   setMessage("正在刷新后台数据...");
   try {
+    if (!state.auth.accessToken) {
+      await loginAdmin();
+    }
     const selectedWarehouseId = state.selectedWarehouseId || 1;
     const qrQuery = new URLSearchParams();
     if (state.qrLogFilters.type) {
@@ -628,6 +886,7 @@ async function loadAll() {
       appQuery.set("userId", state.applicationFilters.userId);
     }
 
+    const canViewUserOps = state.auth.user && state.auth.user.role === "admin";
     const [
       stats,
       approvalsResp,
@@ -638,7 +897,9 @@ async function loadAll() {
       applicationsResp,
       stockAlerts,
       stockMovements,
-      qrLogsResp
+      qrLogsResp,
+      users,
+      operationLogsResp
     ] = await Promise.all([
       apiRequest("/api/dashboard/stats"),
       apiRequest(`/api/approvals?${approvalQuery.toString()}`),
@@ -649,7 +910,11 @@ async function loadAll() {
       apiRequest(`/api/consumable-applications?${appQuery.toString()}`),
       apiRequest(`/api/consumables/stock-alerts?warehouseId=${selectedWarehouseId}`),
       apiRequest(`/api/stock-movements?warehouseId=${selectedWarehouseId}`),
-      apiRequest(qrLogsUrl)
+      apiRequest(qrLogsUrl),
+      canViewUserOps ? apiRequest("/api/users") : Promise.resolve([]),
+      canViewUserOps
+        ? apiRequest("/api/users/operation-logs?page=1&pageSize=20")
+        : Promise.resolve({ items: [] })
     ]);
 
     state.stats = stats;
@@ -679,12 +944,25 @@ async function loadAll() {
     state.qrLogPagination.page = Number((qrLogsResp && qrLogsResp.page) || state.qrLogPagination.page || 1);
     state.qrLogPagination.pageSize = Number((qrLogsResp && qrLogsResp.pageSize) || state.qrLogPagination.pageSize || 20);
     state.qrLogPagination.totalPages = Number((qrLogsResp && qrLogsResp.totalPages) || 1);
+    state.users = users || [];
+    state.operationLogs = (operationLogsResp && operationLogsResp.items) || [];
+
+    const userOpsMenu = document.querySelector('.menu-item[data-section="userOps"]');
+    if (userOpsMenu) {
+      userOpsMenu.style.display = canViewUserOps ? "" : "none";
+    }
+    const userOpsSection = document.querySelector('.section[data-name="userOps"]');
+    if (userOpsSection) {
+      userOpsSection.style.display = canViewUserOps ? "" : "none";
+    }
 
     renderStats();
     renderApprovals();
     renderLedgers();
     renderInventory();
     renderQrLogs();
+    renderUsers();
+    renderOperationLogs();
     setMessage("后台数据已刷新");
     setTimeout(() => setMessage(""), 1800);
   } catch (error) {
@@ -1055,6 +1333,8 @@ window.handleConsumableQrAction = handleConsumableQrAction;
 window.handleConsumablePhotoUpload = handleConsumablePhotoUpload;
 window.handleDeviceQrExport = handleDeviceQrExport;
 window.handleConsumableQrExport = handleConsumableQrExport;
+window.handleUserEnableToggle = handleUserEnableToggle;
+window.handleUserRoleChange = handleUserRoleChange;
 
 function switchSection(name) {
   document.querySelectorAll(".menu-item").forEach((item) => {
@@ -1072,10 +1352,134 @@ function switchSection(name) {
   }
 }
 
+function initLoginFields() {
+  const loginTypeEl = document.getElementById("auth-login-type");
+  const accountEl = document.getElementById("auth-account");
+  const passwordEl = document.getElementById("auth-password");
+  const ssoProviderEl = document.getElementById("auth-sso-provider");
+  const ssoSubjectEl = document.getElementById("auth-sso-subject");
+
+  if (loginTypeEl) loginTypeEl.value = state.auth.loginType || "password";
+  if (accountEl) accountEl.value = state.auth.account || "";
+  if (passwordEl) passwordEl.value = "";
+  if (ssoProviderEl) ssoProviderEl.value = state.auth.ssoProvider || "";
+  if (ssoSubjectEl) ssoSubjectEl.value = state.auth.ssoSubject || "";
+
+  const isSso = state.auth.loginType === "sso";
+  if (accountEl) accountEl.style.display = isSso ? "none" : "";
+  if (passwordEl) passwordEl.style.display = isSso ? "none" : "";
+  if (ssoProviderEl) ssoProviderEl.style.display = isSso ? "" : "none";
+  if (ssoSubjectEl) ssoSubjectEl.style.display = isSso ? "" : "none";
+}
+
+function syncLoginFieldsToState() {
+  const loginTypeEl = document.getElementById("auth-login-type");
+  const accountEl = document.getElementById("auth-account");
+  const passwordEl = document.getElementById("auth-password");
+  const ssoProviderEl = document.getElementById("auth-sso-provider");
+  const ssoSubjectEl = document.getElementById("auth-sso-subject");
+
+  state.auth.loginType = loginTypeEl ? String(loginTypeEl.value || "password") : "password";
+  state.auth.account = accountEl ? String(accountEl.value || "").trim() : "";
+  state.auth.password = passwordEl ? String(passwordEl.value || "") : "";
+  state.auth.ssoProvider = ssoProviderEl ? String(ssoProviderEl.value || "").trim() : "";
+  state.auth.ssoSubject = ssoSubjectEl ? String(ssoSubjectEl.value || "").trim() : "";
+
+  localStorage.setItem("adminLoginType", state.auth.loginType);
+  localStorage.setItem("adminLoginAccount", state.auth.account);
+  localStorage.setItem("adminLoginSsoProvider", state.auth.ssoProvider);
+  localStorage.setItem("adminLoginSsoSubject", state.auth.ssoSubject);
+}
+
+async function handleManualLogin() {
+  syncLoginFieldsToState();
+  state.auth.accessToken = "";
+  state.auth.refreshToken = "";
+  state.auth.user = null;
+  renderAuthSummary();
+  await loginAdmin();
+  await loadAll();
+}
+
+async function handleUserEnableToggle(userId, action) {
+  const isDisable = action === "disable";
+  const okText = isDisable ? "禁用" : "启用";
+  const confirmed = window.confirm(`确定要${okText}用户 #${userId} 吗？`);
+  if (!confirmed) return;
+
+  try {
+    renderUserOpNotices([]);
+    const data = await apiRequest(`/api/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: !isDisable })
+    });
+
+    const notices = data && Array.isArray(data.notices) ? data.notices : [];
+    if (notices.length > 0) {
+      renderUserOpNotices(notices);
+    }
+
+    await loadUserOps();
+    setMessage(`用户 #${userId} 已${okText}`);
+    setTimeout(() => setMessage(""), 1800);
+  } catch (error) {
+    renderUserOpNotices([{ message: error.message || `${okText}失败` }], true);
+  }
+}
+
+async function handleUserRoleChange(userId, currentRole) {
+  const role = window.prompt(
+    `请输入新角色（super_admin/admin/teacher/student），当前：${currentRole}`,
+    currentRole || "teacher"
+  );
+  if (role === null) return;
+
+  const nextRole = String(role || "").trim();
+  if (!nextRole) return;
+
+  try {
+    renderUserOpNotices([]);
+    const data = await apiRequest(`/api/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role: nextRole })
+    });
+
+    const notices = data && Array.isArray(data.notices) ? data.notices : [];
+    if (notices.length > 0) {
+      renderUserOpNotices(notices);
+    }
+
+    await loadUserOps();
+    setMessage(`用户 #${userId} 角色已更新`);
+    setTimeout(() => setMessage(""), 1800);
+  } catch (error) {
+    renderUserOpNotices([{ message: error.message || "角色变更失败" }], true);
+  }
+}
+
 function bindEvents() {
   document.querySelectorAll(".menu-item").forEach((button) => {
     button.addEventListener("click", () => switchSection(button.dataset.section));
   });
+
+  initLoginFields();
+  renderAuthSummary();
+
+  const loginTypeEl = document.getElementById("auth-login-type");
+  if (loginTypeEl) {
+    loginTypeEl.addEventListener("change", () => {
+      syncLoginFieldsToState();
+      initLoginFields();
+      renderAuthSummary();
+    });
+  }
+
+  const authLoginBtn = document.getElementById("auth-login-btn");
+  if (authLoginBtn) {
+    authLoginBtn.addEventListener("click", () => {
+      handleManualLogin().catch((error) => setMessage(error.message || "登录失败", true));
+    });
+  }
 
   document.getElementById("refresh-btn").addEventListener("click", loadAll);
 
@@ -1204,6 +1608,20 @@ function bindEvents() {
   if (approvalsNextBtn) {
     approvalsNextBtn.addEventListener("click", () => {
       handleApprovalsNextPage().catch((error) => setMessage(error.message || "翻页失败", true));
+    });
+  }
+
+  const usersRefreshBtn = document.getElementById("users-refresh-btn");
+  if (usersRefreshBtn) {
+    usersRefreshBtn.addEventListener("click", () => {
+      loadUserOps().catch((error) => renderUserOpNotices([{ message: error.message || "刷新用户失败" }], true));
+    });
+  }
+
+  const logsRefreshBtn = document.getElementById("logs-refresh-btn");
+  if (logsRefreshBtn) {
+    logsRefreshBtn.addEventListener("click", () => {
+      loadUserOps().catch((error) => renderUserOpNotices([{ message: error.message || "刷新日志失败" }], true));
     });
   }
 }
