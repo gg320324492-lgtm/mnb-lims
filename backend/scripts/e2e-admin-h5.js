@@ -5,6 +5,7 @@ process.env.PORT = process.env.E2E_PORT || '3901';
 process.env.USE_MYSQL = process.env.USE_MYSQL || 'false';
 
 const app = require(path.resolve(__dirname, '../src/app'));
+const mysqlStore = require(path.resolve(__dirname, '../src/data/mysqlStore'));
 
 function request(port, method, pathname, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -186,7 +187,8 @@ async function run() {
 
     console.log('[e2e] admin+h5 key approval flows passed');
   } finally {
-    server.close();
+    await new Promise((resolve) => server.close(resolve));
+    await mysqlStore.closePool();
   }
 }
 

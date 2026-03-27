@@ -589,6 +589,13 @@ function toApprovalView(row) {
   };
 }
 
+function closePool() {
+  if (!pool) return Promise.resolve();
+  const current = pool;
+  pool = null;
+  return current.end();
+}
+
 module.exports = {
   useMySql,
   getUsers,
@@ -610,5 +617,6 @@ module.exports = {
   createConsumableApplication,
   getApprovals,
   applyApprovalAction,
-  toApprovalView
+  toApprovalView,
+  closePool
 };

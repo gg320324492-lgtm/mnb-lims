@@ -5,6 +5,7 @@ process.env.PORT = process.env.E2E_BROWSER_PORT || '3903';
 process.env.USE_MYSQL = process.env.USE_MYSQL || 'false';
 
 const app = require(path.resolve(__dirname, '../src/app'));
+const mysqlStore = require(path.resolve(__dirname, '../src/data/mysqlStore'));
 
 async function request(baseUrl, method, pathname, body, token = '') {
   const headers = { 'Content-Type': 'application/json' };
@@ -182,6 +183,7 @@ async function run() {
     await context.close();
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
+    await mysqlStore.closePool();
   }
 }
 
