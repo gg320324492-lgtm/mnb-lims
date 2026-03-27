@@ -1,3 +1,5 @@
+console.log('Admin app.js loaded - version with login screen');
+
 const state = {
   stats: null,
   auth: {
