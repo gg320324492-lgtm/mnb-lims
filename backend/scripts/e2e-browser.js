@@ -157,7 +157,12 @@ async function run() {
 
     await page.fill('#auth-account', 'teacher.li');
     await page.fill('#auth-password', 'teacher123');
+    const loginPromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/auth/login') && resp.request().method() === 'POST',
+      { timeout: 5000 }
+    );
     await page.click('#auth-login-btn');
+    await loginPromise;
     await page.waitForTimeout(500);
 
     // 异常场景3：账号禁用后刷新，前端应提示账号禁用
