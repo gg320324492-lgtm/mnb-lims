@@ -320,7 +320,16 @@ async function loginAdmin() {
   renderAuthSummary();
 }
 
+let _refreshPromise = null;
 async function refreshAdminToken() {
+  if (_refreshPromise) return _refreshPromise;
+  if (!state.auth.refreshToken) {
+    throw new Error("refreshToken 缺失，请重新登录");
+  }
+  _refreshPromise = _doRefreshAdminToken().finally(() => { _refreshPromise = null; });
+  return _refreshPromise;
+}
+async function _doRefreshAdminToken() {
   if (!state.auth.refreshToken) {
     throw new Error("refreshToken 缺失，请重新登录");
   }
