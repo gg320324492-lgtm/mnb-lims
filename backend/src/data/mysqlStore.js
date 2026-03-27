@@ -175,46 +175,6 @@ async function createConsumable(payload) {
     conn.release();
   }
 }
-    await conn.beginTransaction();
-    const [result] = await conn.query(
-      `INSERT INTO consumables (name, category, unit, qr_token, qr_enabled) VALUES (?, ?, ?, ?, 1)`,
-      [
-        String(payload.name || '').trim(),
-        String(payload.category || '未分类').trim(),
-        String(payload.unit || '个').trim(),
-        qrToken
-      ]
-    );
-    const consumableId = result.insertId;
-    const stock = Number(payload.stock || 0);
-    const safeStock = Number(payload.safeStock || 0);
-    const warehouseId = Number(payload.warehouseId || 1);
-    // 获取所有仓库，每个仓库插入库存记录
-    const [warehouses] = await conn.query('SELECT id FROM warehouses');
-    for (const w of warehouses) {
-      const isPrimary = Number(w.id) === warehouseId;
-      await conn.query(
-        `INSERT INTO consumable_stocks (consumable_id, warehouse_id, stock, safe_stock) VALUES (?, ?, ?, ?)`,
-        [consumableId, Number(w.id), isPrimary ? stock : 0, safeStock]
-      );
-    }
-    await conn.commit();
-    const [[row]] = await conn.query(
-      `SELECT c.id, c.name, c.category, c.unit, c.qr_token AS qrToken, c.qr_enabled AS qrEnabled,
-              COALESCE(s.stock, 0) AS stock, COALESCE(s.safe_stock, 0) AS safeStock
-       FROM consumables c
-       LEFT JOIN consumable_stocks s ON s.consumable_id = c.id AND s.warehouse_id = ?
-       WHERE c.id = ?`,
-      [warehouseId, consumableId]
-    );
-    return row;
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
-  }
-}
 
 async function getBorrowById(id) {
   const rows = await query(
