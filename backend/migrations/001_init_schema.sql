@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   business_id BIGINT NOT NULL,
   applicant_id BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
-  remark VARCHAR(255) DEFAULT '',
+  remark VARCHAR(255) NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL,
   updated_at DATETIME NULL
 );
