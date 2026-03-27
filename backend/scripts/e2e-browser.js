@@ -151,8 +151,17 @@ async function run() {
     );
     await page.click('#refresh-btn');
     await roleChangedRefreshPromise;
-    await page.waitForTimeout(400);
-    const roleChangedMsg = await page.locator('#global-message').innerText();
+    // 等待登录屏出现（ROLE_CHANGED 后 showLoginScreen 被调用）
+    await page.waitForFunction(
+      () => {
+        const screen = document.getElementById('login-screen');
+        return screen && screen.style.display !== 'none';
+      },
+      { timeout: 6000 }
+    );
+    const roleChangedMsg = await page.evaluate(
+      () => (document.getElementById('global-message') || {}).textContent || ''
+    );
     if (!/角色已变更|重新登录/.test(String(roleChangedMsg))) {
       throw new Error('role-changed scenario not handled in browser flow');
     }
