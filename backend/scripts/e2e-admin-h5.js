@@ -51,8 +51,43 @@ async function login(port, account, password) {
   return res.data.data;
 }
 
+async function resetDbState() {
+  if (!mysqlStore.useMySql) return;
+  const mysql = require('mysql2/promise');
+  const pool = mysql.createPool({
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'lab_miniapp',
+    connectionLimit: 2
+  });
+  try {
+    // Reset seed devices to available
+    await pool.query(`UPDATE devices SET status = 'available' WHERE id IN (1, 2)`);
+    // Reset seed consumable stocks to initial values
+    await pool.query(`UPDATE consumable_stocks SET stock = 20 WHERE warehouse_id = 1 AND consumable_id = 1`);
+    await pool.query(`UPDATE consumable_stocks SET stock = 8  WHERE warehouse_id = 1 AND consumable_id = 2`);
+    await pool.query(`UPDATE consumable_stocks SET stock = 2  WHERE warehouse_id = 2 AND consumable_id = 1`);
+    await pool.query(`UPDATE consumable_stocks SET stock = 12 WHERE warehouse_id = 2 AND consumable_id = 2`);
+    // Remove borrows/applications/approvals created by previous e2e runs (keep only seed rows id=1,2)
+    await pool.query(`DELETE FROM approvals WHERE id > 2`);
+    await pool.query(`DELETE FROM borrows WHERE id > 1`);
+    await pool.query(`DELETE FROM consumable_applications WHERE id > 1`);
+    // Reset seed approval/borrow/application rows back to pending
+    await pool.query(`UPDATE approvals SET status = 'pending', updated_at = NULL WHERE id IN (1, 2)`);
+    await pool.query(`UPDATE borrows SET status = 'pending' WHERE id = 1`);
+    await pool.query(`UPDATE consumable_applications SET status = 'pending' WHERE id = 1`);
+  } finally {
+    await pool.end();
+  }
+}
+
 async function run() {
   const port = Number(process.env.PORT || 3901);
+
+  await resetDbState();
+
   const server = app.listen(port);
 
   try {
