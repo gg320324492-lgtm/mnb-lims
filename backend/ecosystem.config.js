@@ -7,11 +7,13 @@ const appName = process.env.PM2_APP_NAME || `lab-miniapp-backend-${deployEnv}`;
 const envByMode = {
   staging: {
     NODE_ENV: 'staging',
-    PORT: 3001
+    PORT: 3001,
+    USE_MYSQL: 'true'
   },
   production: {
     NODE_ENV: 'production',
-    PORT: 3000
+    PORT: 3000,
+    USE_MYSQL: 'true'
   }
 };
 
