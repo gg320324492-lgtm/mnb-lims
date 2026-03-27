@@ -381,6 +381,7 @@ async function apiRequest(url, options = {}) {
 
 function setMessage(text, isError = false) {
   const el = document.getElementById("global-message");
+  if (!el) return;
   if (!text) {
     el.className = "message hidden";
     el.textContent = "";
@@ -392,6 +393,7 @@ function setMessage(text, isError = false) {
 
 function renderStats() {
   const container = document.getElementById("stats-cards");
+  if (!container) return;
   const stats = state.stats;
   if (!stats) {
     container.innerHTML = "";
@@ -420,6 +422,7 @@ function renderStats() {
 
 function renderTable(containerId, columns, rows, emptyText = "暂无数据") {
   const container = document.getElementById(containerId);
+  if (!container) return;
   if (!rows || rows.length === 0) {
     container.innerHTML = `<div class="empty">${escapeHtml(emptyText)}</div>`;
     return;
